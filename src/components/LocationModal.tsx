@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { MapPin, X, Navigation, Plus, Check } from 'lucide-react-native';
 import { useLocation } from '../context/LocationContext';
+import { useNavigation } from '@react-navigation/native'; // 🟢 Navigation add kiya
 import api from '../services/api';
 
 interface LocationModalProps {
@@ -20,6 +21,7 @@ interface LocationModalProps {
 }
 
 export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
+  const navigation = useNavigation<any>(); // 🟢 Hook initialize kiya
   const { 
     fetchCurrentGeolocation, 
     currentLocation, 
@@ -30,7 +32,6 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
   const [loadingAddresses, setLoadingAddresses] = useState(false);
 
-  // Modal khulne par addresses load karein
   useEffect(() => {
     if (isOpen) {
       loadAddresses();
@@ -59,7 +60,6 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
   };
 
   const selectAddress = async (item: any) => {
-    // Backend ke fields ke hisaab se update karein
     await updateLocationManually(
       item.latitude, 
       item.longitude, 
@@ -82,7 +82,6 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
         </View>
 
         <View style={styles.content}>
-          {/* 1. Current Location Button */}
           <TouchableOpacity 
             style={styles.currentLocationBtn} 
             onPress={handleUseCurrentLocation}
@@ -96,7 +95,6 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
 
           <View style={styles.divider} />
 
-          {/* 2. Saved Addresses List */}
           <Text style={styles.sectionLabel}>सहेजे गए पते</Text>
           
           {loadingAddresses ? (
@@ -137,10 +135,13 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
             />
           )}
 
-          {/* 3. Add New Address Button */}
+          {/* 🟢 FIXED: Ab ye sahi screen par le jayega */}
           <TouchableOpacity 
             style={styles.addNewBtn}
-            onPress={() => Alert.alert("Coming Soon", "Map Picker Screen setup next step mein karenge.")}
+            onPress={() => {
+              onClose(); // Pehle modal band karein
+              navigation.navigate('Addresses'); // Phir naye pate wali screen par jayein
+            }}
           >
             <Plus color="#fff" size={20} />
             <Text style={styles.addNewText}>नया पता जोड़ें</Text>
@@ -151,6 +152,7 @@ export default function LocationModal({ isOpen, onClose }: LocationModalProps) {
   );
 }
 
+// Styles remains same as your original file
 const styles = StyleSheet.create({
   fullScreen: { flex: 1, backgroundColor: '#fff' },
   header: { 

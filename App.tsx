@@ -8,6 +8,7 @@ import { AuthProvider } from './src/context/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator'; // Hamara naya navigator
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './src/lib/queryClient';
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [initializing, setInitializing] = useState(true);

@@ -34,7 +34,7 @@ export default function CheckoutDirectScreen() {
 
   const handlePlaceOrder = async () => {
     if (!fullName || !phone || !address) {
-      Alert.alert("Error", "Bhai, address aur phone number toh daal do!");
+      Alert.alert("Error","Please add your delivery address and phone number to proceed with your order.", );
       return;
     }
 
@@ -75,7 +75,18 @@ export default function CheckoutDirectScreen() {
 
       if (response.status === 200 || response.status === 201) {
         Alert.alert("Order Confirmed! 🚀", "Aapka order successfully place ho gaya hai.", [
-          { text: "Mast!", onPress: () => navigation.navigate('Home') }
+          { text: "Success!", onPress: () =>
+             // ✅ Best way: Reset stack and go to Home (which is inside 'Main')
+navigation.reset({
+  index: 0,
+  routes: [
+    { 
+      name: 'Main', 
+      params: { screen: 'Home' } 
+    }
+  ],
+})
+             }
         ]);
       }
     } catch (error: any) {

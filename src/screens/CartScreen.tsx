@@ -65,7 +65,7 @@ export default function CartScreen() {
       <Text style={styles.emptySub}>Chaliye kuch behtareen dhundte hain.</Text>
       <TouchableOpacity 
         style={styles.shopBtn} 
-        onPress={() => navigation.navigate('Home')}
+       onPress={() => navigation.navigate('Main', { screen: 'Home' })} 
       >
         <Text style={styles.shopBtnText}>Start Shopping</Text>
       </TouchableOpacity>

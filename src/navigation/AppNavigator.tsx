@@ -19,7 +19,9 @@ import CheckoutScreen from '../screens/CheckoutScreen';
 import CheckoutDirectScreen from '../screens/CheckoutDirectScreen';
 import OrderSuccessScreen from '../screens/OrderSuccessScreen';
 import TrackOrderScreen from '../screens/TrackOrderScreen';
-
+import AddressesScreen from '../screens/AddressesScreen';
+import OrderDetailsScreen from '../screens/OrderDetailsScreen';
+import MapPickerScreen from '../screens/MapPickerScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -68,7 +70,10 @@ export default function AppNavigator() {
             <Stack.Screen name="Cart" component={CartScreen} />
             <Stack.Screen name="Checkout" component={CheckoutScreen} />
             <Stack.Screen name="CheckoutDirect" component={CheckoutDirectScreen} />
+            <Stack.Screen name="Addresses" component={AddressesScreen} />
             <Stack.Screen name="OrderSuccess" component={OrderSuccessScreen} />
+            <Stack.Screen name="MapPicker" component={MapPickerScreen} />
+            <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
             <Stack.Screen 
               name="TrackOrder" 
               component={TrackOrderScreen} 

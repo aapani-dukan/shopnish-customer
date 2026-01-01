@@ -1,210 +1,280 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, ActivityIndicator, Linking } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { 
-  Truck, MapPin, Clock, ChevronLeft, CheckCircle 
-} from 'lucide-react-native';
-import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '../lib/queryClient';
-import { Feather } from '@expo/vector-icons';
+import MapViewDirections from 'react-native-maps-directions';
+import { io } from 'socket.io-client';
+import { Truck, MapPin, Phone, ChevronLeft, Package, Store, Clock, ShieldCheck } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { auth } from '../lib/firebase'; // 🟢 Firebase Auth Import
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+const GOOGLE_MAPS_APIKEY = 'AIzaSyD4G0AfOt0YPc9d0NwAyo1l_t51qra6xxw';
 
-// Ye steps aapke backend ke enum se match hone chahiye
-const STATUS_STEPS = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'delivered'];
+export default function TrackOrderScreen({ route, navigation }: any) {
+  const orderId = route?.params?.orderId;
+  const [trackingData, setTrackingData] = useState<any>(null);
+  const [liveLocations, setLiveLocations] = useState<Map<number, any>>(new Map());
+  const [liveETA, setLiveETA] = useState<string | null>(null);
+  const socket = useRef<any>(null);
 
-export default function TrackOrderScreen({ navigation, route }: any) {
-  // 1. Route se orderId lena (Fallback ke liye SN-9928 rakha hai)
-  const { orderId } = route.params || { orderId: 'SN-9928' };
+  // 🟢 1. Web Logic: Get Display ETA (Priority: Backend > Map > Fallback)
+  const getDisplayETA = () => {
+    if (trackingData?.estimatedDeliveryTime) {
+      return new Date(trackingData.estimatedDeliveryTime).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+    return liveETA || "Arriving Soon";
+  };
 
-  // 2. Real Data Fetching via React Query
-  const { data: order, isLoading, isError } = useQuery<any>({
-    queryKey: [`/api/orders/${orderId}`],
-    refetchInterval: 5000, // Har 5 second mein auto-refresh (Live Tracking ke liye)
-  });
+  const getStatusText = (status: string = "") => {
+    const s = status.toLowerCase();
+    switch (s) {
+      case 'placed': return 'Order Placed';
+      case 'confirmed': return 'Confirmed by Store';
+      case 'preparing': return 'Items being Prepared';
+      case 'ready_for_pickup': return 'Ready for Pickup';
+      case 'picked_up': return 'Partner Picked Up';
+      case 'out_for_delivery': return 'Rider on the way';
+      case 'delivered': return 'Delivered';
+      default: return status.replace(/_/g, ' ').toUpperCase();
+    }
+  };
 
-  // Loading State
-  if (isLoading) {
+  const getStatusColor = (status: string = "") => {
+    const s = status.toLowerCase();
+    if (['placed', 'confirmed', 'accepted'].includes(s)) return '#3b82f6';
+    if (['preparing', 'ready_for_pickup'].includes(s)) return '#f59e0b';
+    if (['picked_up', 'out_for_delivery', 'in transit'].includes(s)) return '#7c3aed';
+    if (['delivered'].includes(s)) return '#10b981';
+    return '#64748b';
+  };
+
+  // 🟢 2. Fetch Data with Firebase Token (Fixes 401 Error)
+  const fetchTracking = async () => {
+    try {
+      const fbUser = auth.currentUser;
+      if (!fbUser) return;
+      const token = await fbUser.getIdToken();
+
+      const res = await fetch(`https://shopnish-seprate.onrender.com/api/orders/${orderId}/tracking`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (res.status === 401) {
+        console.error("❌ Auth Failed: Check Backend Token Verification");
+        return;
+      }
+
+      const data = await res.json();
+      setTrackingData(data);
+    } catch (e) {
+      console.error("Fetch Error:", e);
+    }
+  };
+
+  // 🟢 3. Socket Connection with Token (Fixes Socket Rejection)
+  useEffect(() => {
+    const initSocket = async () => {
+      const fbUser = auth.currentUser;
+      const token = await fbUser?.getIdToken();
+
+      socket.current = io("https://shopnish-seprate.onrender.com", { 
+        transports: ['websocket'],
+        auth: { token: `Bearer ${token}` }
+      });
+
+      socket.current.on('connect', () => {
+        socket.current.emit("register-client", { role: "user", userId: fbUser?.uid });
+        socket.current.emit("join-order-room", { orderId: Number(orderId) });
+      });
+
+      socket.current.on("order:delivery_location", (data: any) => {
+        setLiveLocations((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(data.batchId, { lat: data.lat, lng: data.lng });
+          return newMap;
+        });
+      });
+
+      socket.current.on('order:status_updated', fetchTracking);
+    };
+
+    fetchTracking();
+    initSocket();
+
+    return () => socket.current?.disconnect();
+  }, [orderId]);
+
+  // 🟢 4. Map Logic (Coordinates Parsing)
+  const mapNodes = useMemo(() => {
+    if (!trackingData || !trackingData.deliveryBatchesSummary?.length) return null;
+
+    const batch = trackingData.deliveryBatchesSummary[0];
+    const live = liveLocations.get(batch.batchId);
+    const db = batch.deliveryBoy;
+
+    const rLat = parseFloat(String(live?.lat || db?.currentLocation?.lat || 0));
+    const rLng = parseFloat(String(live?.lng || db?.currentLocation?.lng || 0));
+    
+    // Yahan agar 0 aa raha ho toh debugging ke liye manual coords dalkar check kar sakte hain
+    const cLat = parseFloat(String(trackingData.customerDeliveryAddress?.latitude || 0));
+    const cLng = parseFloat(String(trackingData.customerDeliveryAddress?.longitude || 0));
+
+    const riderPos = { latitude: rLat, longitude: rLng };
+    const customerPos = { latitude: cLat, longitude: cLng };
+
+    const bStatus = batch.batchStatus.toLowerCase();
+    const isNotPickedUp = ["placed", "confirmed", "accepted", "preparing", "ready_for_pickup"].includes(bStatus);
+    
+    let destinationPos = customerPos;
+    if (isNotPickedUp && batch.storeLocations?.length > 0) {
+      destinationPos = {
+        latitude: parseFloat(String(batch.storeLocations[0].latitude)),
+        longitude: parseFloat(String(batch.storeLocations[0].longitude))
+      };
+    }
+
+    return { riderPos, destinationPos };
+  }, [trackingData, liveLocations]);
+
+  if (!trackingData) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563eb" />
-        <Text style={{ marginTop: 10, color: '#64748B' }}>Fetching Live Status...</Text>
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color="#7c3aed" />
+        <Text style={styles.loaderText}>SYNCING LIVE STATUS...</Text>
       </View>
     );
   }
 
-  // Error State
-  if (isError || !order) {
-    return (
-      <View style={styles.center}>
-        <Text style={{ color: '#EF4444' }}>Order details nahi mil payi!</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text>Wapas Jayein</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // Rider & Customer Location (Ab data backend se aayega)
-  // Agar backend coordinates nahi bhej raha toh default fallback rakha hai
-  const riderLocation = order.riderLocation || { latitude: 25.4455, longitude: 75.6655 };
-  const customerLocation = order.customerLocation || { latitude: 25.4490, longitude: 75.6700 };
-  const currentStatus = order.status || 'placed';
+  const currentStatus = trackingData.overallDeliveryStatus || trackingData.status;
 
   return (
-    <View style={styles.container}>
-      {/* 1. Custom Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ChevronLeft color="#000" size={24} />
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <View style={styles.mapWrapper}>
+        <MapView
+          provider={PROVIDER_GOOGLE}
+          style={styles.map}
+          initialRegion={{
+            latitude: mapNodes?.riderPos?.latitude || trackingData.customerDeliveryAddress?.latitude || 25.44,
+            longitude: mapNodes?.riderPos?.longitude || trackingData.customerDeliveryAddress?.longitude || 75.66,
+            latitudeDelta: 0.015,
+            longitudeDelta: 0.015,
+          }}
+        >
+          {mapNodes && mapNodes.riderPos.latitude !== 0 && mapNodes.destinationPos.latitude !== 0 && (
+            <>
+              <MapViewDirections
+                origin={mapNodes.riderPos}
+                destination={mapNodes.destinationPos}
+                apikey={GOOGLE_MAPS_APIKEY}
+                strokeWidth={4}
+                strokeColor="#7c3aed"
+                optimizeWaypoints={true}
+                mode="DRIVING"
+                onReady={result => setLiveETA(`${Math.ceil(result.duration)} mins`)}
+                onError={(err) => console.log("Directions Error:", err)}
+              />
+              <Marker coordinate={mapNodes.riderPos} anchor={{x:0.5, y:0.5}}>
+                <View style={[styles.markerBase, {backgroundColor: '#7c3aed'}]}><Truck color="#fff" size={16} /></View>
+              </Marker>
+              <Marker coordinate={mapNodes.destinationPos}>
+                <View style={[styles.markerBase, {backgroundColor: '#ef4444'}]}><MapPin color="#fff" size={16} /></View>
+              </Marker>
+            </>
+          )}
+        </MapView>
+        
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <ChevronLeft color="#1e293b" size={24} />
         </TouchableOpacity>
-        <View>
-          <Text style={styles.headerTitle}>Track Order</Text>
-          <Text style={styles.orderNumber}>#{order.orderNumber || order.id}</Text>
-        </View>
-        <View style={styles.liveBadge}>
-          <View style={styles.dot} />
-          <Text style={styles.liveText}>LIVE</Text>
-        </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* 2. LIVE MAP SECTION */}
-        <View style={styles.mapContainer}>
-          <MapView
-            provider={PROVIDER_GOOGLE}
-            style={styles.map}
-            region={{
-              ...riderLocation,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-          >
-            <Marker coordinate={riderLocation} title="Rider">
-              <View style={styles.riderMarker}>
-                <Truck color="white" size={20} />
-              </View>
-            </Marker>
-
-            <Marker coordinate={customerLocation} title="You">
-              <View style={styles.customerMarker}>
-                <MapPin color="white" size={20} />
-              </View>
-            </Marker>
-          </MapView>
-          
-          <View style={styles.etaOverlay}>
-            <Clock color="#2563eb" size={18} />
-            <Text style={styles.etaText}>
-              {order.status === 'delivered' ? 'Order Delivered' : `Arriving in ${order.eta || '--'} Mins`}
-            </Text>
+      <View style={styles.infoCard}>
+        <View style={styles.dragHandle} />
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.orderLabel}>ORDER #{trackingData.masterOrderNumber}</Text>
+            <Text style={styles.statusMain}>{getStatusText(currentStatus)}</Text>
+          </View>
+          <View style={[styles.statusBadge, {backgroundColor: getStatusColor(currentStatus) + '20'}]}>
+             <Text style={[styles.statusText, {color: getStatusColor(currentStatus)}]}>LIVE UPDATE</Text>
           </View>
         </View>
 
-        {/* 3. RIDER INFO CARD (Dynamic) */}
-        {order.deliveryPartner ? (
-          <View style={styles.card}>
-            <View style={styles.riderRow}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {order.deliveryPartner.name.split(' ').map((n: any) => n[0]).join('')}
-                </Text>
-              </View>
-              <View style={styles.riderDetails}>
-                <Text style={styles.riderName}>{order.deliveryPartner.name}</Text>
-                <Text style={styles.riderSub}>Professional Delivery Partner</Text>
-              </View>
-              <TouchableOpacity 
-                style={styles.callBtn}
-                onPress={() => {/* Linking logic for order.deliveryPartner.phone */}}
-              >
-                <Feather name="phone" color="white" size={20} />
-              </TouchableOpacity>
-            </View>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={styles.etaCard}>
+             <View style={styles.etaIcon}><Clock color="#fff" size={20}/></View>
+             <View>
+               <Text style={styles.etaSub}>ESTIMATED ARRIVAL</Text>
+               <Text style={styles.etaTime}>{getDisplayETA()}</Text>
+             </View>
+             <View style={styles.safetyBadge}>
+               <ShieldCheck color="#10b981" size={14} />
+               <Text style={styles.safetyText}>Contactless</Text>
+             </View>
           </View>
-        ) : (
-          <View style={styles.card}>
-            <View style={styles.riderRow}>
-              <View style={[styles.avatar, { backgroundColor: '#F1F5F9' }]}>
-                <Feather name="user" color="#94A3B8" size={20} />
+
+          <Text style={styles.sectionTitle}>Shipment Details</Text>
+          {trackingData?.deliveryBatchesSummary?.map((batch: any, idx: number) => (
+            <View key={idx} style={styles.batchCard}>
+              <View style={styles.batchHeader}>
+                <Text style={styles.batchId}>Batch #{batch.batchId}</Text>
+                <Text style={[styles.batchStatus, {color: getStatusColor(batch.batchStatus)}]}>{getStatusText(batch.batchStatus)}</Text>
               </View>
-              <View style={styles.riderDetails}>
-                <Text style={[styles.riderName, { color: '#94A3B8' }]}>Assigning Partner...</Text>
-                <Text style={styles.riderSub}>Finding the best route for you</Text>
-              </View>
+              {batch?.deliveryBoy && (
+                <View style={styles.riderRow}>
+                   <View style={styles.riderAvatar}><Package color="#64748b" /></View>
+                   <View style={{flex:1, marginLeft: 12}}>
+                     <Text style={styles.riderName}>{batch.deliveryBoy.name}</Text>
+                     <Text style={styles.riderRating}>★ 4.9 • Delivery Partner</Text>
+                   </View>
+                   <TouchableOpacity style={styles.callBtn} onPress={() => Linking.openURL(`tel:${batch.deliveryBoy.phone}`)}>
+                     <Phone color="#fff" size={18} />
+                   </TouchableOpacity>
+                </View>
+              )}
             </View>
-          </View>
-        )}
-
-        {/* 4. ORDER TIMELINE (Dynamic) */}
-        <View style={styles.timelineCard}>
-          <Text style={styles.sectionTitle}>Order Journey</Text>
-          {STATUS_STEPS.map((step, index) => {
-            const currentStepIndex = STATUS_STEPS.indexOf(currentStatus);
-            const isCompleted = currentStepIndex >= index;
-            const isLast = index === STATUS_STEPS.length - 1;
-
-            return (
-              <View key={step} style={styles.timelineStep}>
-                <View style={styles.indicatorContainer}>
-                  <View style={[styles.stepDot, isCompleted && styles.completedDot]}>
-                    {isCompleted && <CheckCircle color="white" size={14} />}
-                  </View>
-                  {!isLast && <View style={[styles.line, isCompleted && styles.completedLine]} />}
-                </View>
-                <View style={styles.stepContent}>
-                  <Text style={[styles.stepText, isCompleted && styles.activeStepText]}>
-                    {step.replace(/_/g, ' ').toUpperCase()}
-                  </Text>
-                  {isCompleted && (
-                    <Text style={styles.stepTime}>
-                      {index === currentStepIndex ? 'Current Status' : 'Completed'}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      </ScrollView>
-    </View>
+          ))}
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 50, paddingBottom: 20, backgroundColor: '#fff' },
-  backBtn: { padding: 8, backgroundColor: '#F1F5F9', borderRadius: 12 },
-  headerTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B' },
-  orderNumber: { fontSize: 12, color: '#64748B', fontWeight: 'bold' },
-  liveBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E', marginRight: 6 },
-  liveText: { fontSize: 10, fontWeight: '900', color: '#166534' },
-  mapContainer: { height: 350, width: '100%', marginVertical: 10, position: 'relative' },
+  container: { flex: 1, backgroundColor: '#fff' },
+  loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
+  loaderText: { marginTop: 20, fontSize: 12, fontWeight: '900', color: '#7c3aed', letterSpacing: 2 },
+  mapWrapper: { height: height * 0.42, width: width },
   map: { ...StyleSheet.absoluteFillObject },
-  riderMarker: { backgroundColor: '#2563eb', padding: 8, borderRadius: 20, borderWidth: 3, borderColor: '#fff' },
-  customerMarker: { backgroundColor: '#EF4444', padding: 8, borderRadius: 20, borderWidth: 3, borderColor: '#fff' },
-  etaOverlay: { position: 'absolute', bottom: 20, left: 20, right: 20, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
-  etaText: { marginLeft: 10, fontSize: 16, fontWeight: '900', color: '#1E293B' },
-  card: { backgroundColor: '#fff', margin: 20, borderRadius: 24, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
-  riderRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontWeight: 'bold', color: '#475569' },
-  riderDetails: { flex: 1, marginLeft: 15 },
-  riderName: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
-  riderSub: { fontSize: 12, color: '#64748B' },
-  callBtn: { backgroundColor: '#22C55E', width: 45, height: 45, borderRadius: 22.5, alignItems: 'center', justifyContent: 'center' },
-  timelineCard: { backgroundColor: '#fff', marginHorizontal: 20, marginBottom: 40, borderRadius: 24, padding: 25 },
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: '#1E293B', marginBottom: 20 },
-  timelineStep: { flexDirection: 'row', minHeight: 60 },
-  indicatorContainer: { alignItems: 'center', width: 30 },
-  stepDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', zIndex: 1 },
-  completedDot: { backgroundColor: '#22C55E' },
-  line: { width: 2, flex: 1, backgroundColor: '#E2E8F0', marginVertical: 4 },
-  completedLine: { backgroundColor: '#22C55E' },
-  stepContent: { flex: 1, marginLeft: 15 },
-  stepText: { fontSize: 14, fontWeight: 'bold', color: '#94A3B8' },
-  activeStepText: { color: '#1E293B' },
-  stepTime: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  backBtn: { position: 'absolute', top: 50, left: 20, backgroundColor: '#fff', padding: 10, borderRadius: 15, elevation: 5 },
+  infoCard: { flex: 1, backgroundColor: '#fff', borderTopLeftRadius: 35, borderTopRightRadius: 35, marginTop: -35, padding: 25, elevation: 20 },
+  dragHandle: { width: 40, height: 4, backgroundColor: '#e2e8f0', alignSelf: 'center', marginBottom: 20, borderRadius: 10 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  orderLabel: { fontSize: 11, fontWeight: '800', color: '#94a3b8', letterSpacing: 1 },
+  statusMain: { fontSize: 26, fontWeight: '900', color: '#1e293b' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  statusText: { fontSize: 10, fontWeight: '900' },
+  etaCard: { backgroundColor: '#1e293b', borderRadius: 25, padding: 20, flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
+  etaIcon: { width: 45, height: 45, backgroundColor: '#7c3aed', borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginRight: 15 },
+  etaSub: { fontSize: 10, color: '#94a3b8', fontWeight: '800' },
+  etaTime: { fontSize: 22, fontWeight: '900', color: '#fff' },
+  safetyBadge: { marginLeft: 'auto', backgroundColor: '#ffffff10', padding: 8, borderRadius: 12, alignItems: 'center' },
+  safetyText: { color: '#10b981', fontSize: 9, fontWeight: '800', marginTop: 2 },
+  sectionTitle: { fontSize: 16, fontWeight: '900', color: '#1e293b', marginBottom: 15 },
+  batchCard: { backgroundColor: '#f8fafc', borderRadius: 25, padding: 20, marginBottom: 15, borderWidth: 1, borderColor: '#f1f5f9' },
+  batchHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  batchId: { fontSize: 14, fontWeight: '800', color: '#1e293b' },
+  batchStatus: { fontSize: 12, fontWeight: '800' },
+  riderRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 12, borderRadius: 18 },
+  riderAvatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  riderName: { fontSize: 15, fontWeight: '800', color: '#1e293b' },
+  riderRating: { fontSize: 11, color: '#94a3b8' },
+  callBtn: { backgroundColor: '#10b981', padding: 12, borderRadius: 15 },
+  markerBase: { padding: 8, borderRadius: 20, borderWidth: 3, borderColor: '#fff', elevation: 10 }
 });
