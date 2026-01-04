@@ -13,13 +13,15 @@
       "android": {
         "buildType": "apk"
       },
-      "nodeMethod": "npm",
-      "installCommand": "npm install --legacy-peer-deps"
+      "env": {
+        "NPM_FLAGS": "--legacy-peer-deps"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "nodeMethod": "npm",
-      "installCommand": "npm install --legacy-peer-deps"
+      "env": {
+        "NPM_FLAGS": "--legacy-peer-deps"
+      }
     }
   },
   "submit": {
