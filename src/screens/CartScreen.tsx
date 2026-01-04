@@ -11,13 +11,20 @@ export default function CartScreen() {
   const queryClient = useQueryClient();
   const { refreshCart } = useCart();
 
-  // 1. Fetch Real Cart Data from Backend
-  const { data: cartData, isLoading } = useQuery<any>({
-    queryKey: ['/api/cart'],
-  });
+ // 1. Fetch Real Cart Data with Safety
+const { data: cartData, isLoading, error } = useQuery<any>({
+  queryKey: ['/api/cart'],
+  // Agar error aaye toh app crash na ho, console mein dikh jaye
+  retry: false, 
+});
 
-  const cartItems = cartData?.items || [];
+// ✅ Safety check: Agar data nahi hai ya error hai, toh khali array ([]) rakho
+const cartItems = cartData?.items || [];
 
+// 💡 Optional: Console mein error dekhne ke liye (sirf development ke liye)
+if (error) {
+  console.log("⚠️ Cart fetch mein dikkat hai, par humne handle kar liya:", error);
+} 
   // 2. Quantity Update Mutation
   const updateQuantityMutation = useMutation({
     mutationFn: async ({ productId, quantity }: { productId: string, quantity: number }) => {

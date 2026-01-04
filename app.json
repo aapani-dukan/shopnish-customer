@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "shopnish-customer",
+    "name": "Shopnish",
     "slug": "shopnish-customer",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,23 +8,44 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.shopnish.customer"
     },
     "android": {
+      "package": "com.shopnish.customer",
+      
+      "googleServicesFile": "./google-services.json",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "RECEIVE_SMS",
+        "READ_SMS"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyD4G0AfOt0YPc9d0NwAyo1l_t51qra6xxw"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2e3663e4-32e1-4a74-8493-676771231def"
+      }
     }
   }
 }

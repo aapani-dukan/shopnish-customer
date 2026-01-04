@@ -1,13 +1,14 @@
+// AuthContext.tsx (Updated)
 import React, { createContext, useState, useEffect, useContext, useCallback, useMemo } from 'react';
-import { User as FirebaseUser, onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, signInWithEmail as firebaseSignInWithEmail, signUpWithEmail as firebaseSignUpWithEmail, logout } from '../lib/firebase';
-import api from '../services/api'; // Aapka axios instance
+import { User as FirebaseUser, onAuthStateChanged, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
+import { auth, logout } from '../lib/firebase';
+import api from '../services/api';
 
-// --- Types ---
 export interface User {
-  id?: string; // Backend DB ID
-  uid?: string; // Firebase UID
+  id?: string;
+  uid?: string;
   email: string | null;
+  phoneNumber: string | null; // OTP ke liye phone number add kiya
   name: string | null;
   role: "customer" | "seller" | "admin" | "delivery";
   isAdmin: boolean;
@@ -17,7 +18,9 @@ interface AuthContextType {
   user: User | null;
   isLoadingAuth: boolean;
   isAuthenticated: boolean;
-  signInWithEmail: (email: string, password: string) => Promise<void>;
+  // OTP ke liye naye functions
+  sendOtp: (phoneNumber: string, recaptchaVerifier: any) => Promise<string>;
+  verifyOtp: (verificationId: string, otpCode: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -27,37 +30,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
-  // ✅ Backend se Sync karne wala function (Exact Web App Logic)
+  // ✅ Sabse bada badlav yahan hai
   const fetchAndSyncBackendUser = useCallback(async (fbUser: FirebaseUser) => {
     try {
-      const idToken = await fbUser.getIdToken();
+      // 1. Firebase se fresh ID Token lein
+      const idToken = await fbUser.getIdToken(true);
+
+      // 2. /api/users/login par POST request bhejein (Jo humne Render par banaya hai)
+      // Ye naye user ko banayega aur purane user ko fetch karega
+      const res = await api.post("/api/users/login", { idToken });
       
-      // 1. Backend se user data mangwao
-      const res = await api.get("/api/users/me");
-      const dbUserData = res.data.user || res.data;
+      const dbUserData = res.data.user;
 
       const newUserData: User = {
         uid: fbUser.uid,
-        id: dbUserData.id, // 👈 Yahi ID chahiye thi checkout ke liye
-        email: fbUser.email,
-        name: dbUserData.name || fbUser.displayName,
-        role: dbUserData.role || "customer",
+        id: dbUserData.id,
+        email: dbUserData.email,
+        phoneNumber: fbUser.phoneNumber || dbUserData.phone,
+        name: dbUserData.firstName ? `${dbUserData.firstName} ${dbUserData.lastName}` : "Customer",
+        role: dbUserData.role,
         isAdmin: dbUserData.role === "admin",
       };
-
+      
       setUser(newUserData);
     } catch (e: any) {
       console.error("❌ Backend sync failed:", e.response?.data || e.message);
-      // Agar backend par user nahi hai toh initial-login call ho sakta hai (optional)
+      // Agar backend mana kar de, toh Firebase se bhi logout kar dein
       setUser(null);
     } finally {
       setIsLoadingAuth(false);
     }
   }, []);
 
-  // ✅ Auth State Change Monitor
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser:any) => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         await fetchAndSyncBackendUser(fbUser);
       } else {
@@ -68,19 +74,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => unsubscribe();
   }, [fetchAndSyncBackendUser]);
 
-  // ✅ Login Function
-  const signInWithEmail = async (email: string, password: string) => {
-    setIsLoadingAuth(true);
+  // 🔥 OTP Bhejne wala function (Real)
+  const sendOtp = async (phoneNumber: string, recaptchaVerifier: any) => {
+    const phoneProvider = new PhoneAuthProvider(auth);
+    return await phoneProvider.verifyPhoneNumber(phoneNumber, recaptchaVerifier);
+  };
+
+  // 🔥 OTP Verify karke Login karne wala function
+  const verifyOtp = async (verificationId: string, otpCode: string) => {
     try {
-      await firebaseSignInWithEmail(email, password);
-      // fetchAndSync apne aap useEffect se trigger ho jayega
-    } catch (err) {
-      setIsLoadingAuth(false);
-      throw err;
+      const credential = PhoneAuthProvider.credential(verificationId, otpCode);
+      // Firebase login hone par onAuthStateChanged apne aap trigger hoga
+      // Aur hamara naya fetchAndSyncBackendUser chal jayega
+      await signInWithCredential(auth, credential);
+    } catch (error) {
+      console.error("❌ OTP Verification Failed:", error);
+      throw error;
     }
   };
 
-  // ✅ Logout Function
   const signOut = async () => {
     await logout();
     setUser(null);
@@ -90,7 +102,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     user,
     isLoadingAuth,
     isAuthenticated: !!user,
-    signInWithEmail,
+    sendOtp,
+    verifyOtp,
     signOut,
   }), [user, isLoadingAuth]);
 

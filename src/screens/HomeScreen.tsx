@@ -279,14 +279,23 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 20, fontWeight: '800', color: '#0f172a' },
   clearBtn: { color: '#2563eb', fontWeight: 'bold' },
   catItem: { alignItems: 'center', marginRight: 22 },
-  catCircle: { 
-    width: 70, height: 70, borderRadius: 24, 
-    backgroundColor: '#f8fafc', justifyContent: 'center', 
-    alignItems: 'center', marginBottom: 8,
-    borderWidth: 1, borderColor: '#f1f5f9'
+  catCircle: {
+    width: 65,         // Aap apne hisaab se size badha sakte hain
+    height: 65,
+    borderRadius: 32.5, 
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden', // ✅ Ye sabse important hai cover ke liye
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   selectedCatCircle: { backgroundColor: '#2563eb', borderColor: '#2563eb', elevation: 8, shadowColor: '#2563eb', shadowOpacity: 0.4, shadowRadius: 10 },
-  catImage: { width: 45, height: 45, resizeMode: 'contain' },
+  catImage: { 
+    width: '100%',     // ✅ Circle ki poori width lega
+    height: '100%',    // ✅ Circle ki poori height lega
+    resizeMode: 'cover' // ✅ Image ko poora fill kar dega (Premium look)
+},
   catText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
   selectedCatText: { color: '#0f172a' },
   rowWrapper: { justifyContent: 'space-between', paddingHorizontal: 20 },
