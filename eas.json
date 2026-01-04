@@ -9,14 +9,14 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      },
-      "env": {
-        "NPM_FLAGS": "--legacy-peer-deps"
-      }
-    },
+  "distribution": "internal",
+  "android": {
+    "buildType": "apk"
+  },
+  "env": {
+    "NPM_FLAGS": "--legacy-peer-deps"
+  }
+},
     "production": {
       "autoIncrement": true,
       "env": {
