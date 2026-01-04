@@ -24,6 +24,7 @@
     "expo-constants": "~18.0.12",
     "expo-crypto": "~15.0.8",
     "expo-location": "~19.0.8",
+    "expo-router": "~6.0.21",
     "expo-status-bar": "~3.0.9",
     "firebase": "^12.7.0",
     "lucide-react-native": "^0.562.0",
