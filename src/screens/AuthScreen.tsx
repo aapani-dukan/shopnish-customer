@@ -11,28 +11,25 @@ import {
   Platform,
   ScrollView 
 } from 'react-native';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
-import { auth } from '../lib/firebase';
-import { useAuth } from '../context/AuthContext';
+// Naya Firebase Auth import
+import auth from '@react-native-firebase/auth';
 
 export default function AuthScreen() {
-  const { sendOtp, verifyOtp } = useAuth();
-  const recaptchaVerifier = useRef(null);
   const otpInputRef = useRef<TextInput>(null);
   
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [verificationId, setVerificationId] = useState("");
+  const [confirm, setConfirm] = useState<any>(null); // Firebase confirmation object
   const [otpCode, setOtpCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Jab OTP screen aaye toh cursor apne aap input par chala jaye
+  // Jab OTP screen aaye toh focus automatic ho jaye
   useEffect(() => {
-    if (verificationId && otpInputRef.current) {
+    if (confirm && otpInputRef.current) {
       setTimeout(() => otpInputRef.current?.focus(), 500);
     }
-  }, [verificationId]);
+  }, [confirm]);
 
-  // Phase 1: OTP Bhejna
+  // Phase 1: Modern OTP Bhejna (No Recaptcha Modal needed)
   const handleSendOtp = async () => {
     if (!phoneNumber || phoneNumber.length < 10) {
       Alert.alert("Opps!", "Kripya 10 digit ka mobile number daalein.");
@@ -42,12 +39,14 @@ export default function AuthScreen() {
     setIsLoading(true);
     try {
       const fullNumber = `+91${phoneNumber}`;
-      const id = await sendOtp(fullNumber, recaptchaVerifier.current);
-      setVerificationId(id);
+      // Firebase ka naya method jo invisible recaptcha handle karta hai
+      const confirmation = await auth().signInWithPhoneNumber(fullNumber);
+      setConfirm(confirmation);
       console.log("✅ OTP Sent Successfully");
     } catch (err: any) {
       console.error("❌ Send OTP Error:", err);
-      Alert.alert("Error", err.message || "OTP bhejne mein dikkat hui.");
+      // Agar Firebase console mein phone auth chalu nahi hai toh ye error dega
+      Alert.alert("Error", "OTP bhejne mein dikkat hui. Firebase Console check karein.");
     } finally {
       setIsLoading(false);
     }
@@ -62,11 +61,13 @@ export default function AuthScreen() {
 
     setIsLoading(true);
     try {
-      await verifyOtp(verificationId, otpCode);
-      // Success! AuthContext handle karega navigation
+      // confirm.confirm hi OTP verify karta hai
+      await confirm.confirm(otpCode);
+      console.log("✅ Login Success!");
+      // Navigation ab AuthContext ke onAuthStateChanged se automatic hogi
     } catch (err: any) {
       console.error("❌ Verify OTP Error:", err);
-      Alert.alert("Invalid OTP", "Kripya sahi code daalein ya fir se koshish karein.");
+      Alert.alert("Invalid OTP", "Kripya sahi code daalein.");
     } finally {
       setIsLoading(false);
     }
@@ -78,19 +79,13 @@ export default function AuthScreen() {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={{flexGrow: 1, justifyContent: 'center'}}>
-        <FirebaseRecaptchaVerifierModal
-          ref={recaptchaVerifier}
-          firebaseConfig={auth.app.options}
-          attemptInvisibleVerification={true} 
-        />
-
         <View style={styles.card}>
           <Text style={styles.title}>Shopnish</Text>
           <Text style={styles.subtitle}>
-            {!verificationId ? 'Premium Multi-Seller Platform' : 'Confirm the code sent to your phone'}
+            {!confirm ? 'Premium Multi-Seller Platform' : 'Confirm the code sent to your phone'}
           </Text>
 
-          {!verificationId ? (
+          {!confirm ? (
             /* PHONE INPUT SECTION */
             <>
               <View style={styles.inputLabelContainer}>
@@ -130,8 +125,8 @@ export default function AuthScreen() {
                 onChangeText={setOtpCode}
                 keyboardType="number-pad"
                 maxLength={6}
-                textContentType="oneTimeCode" // iOS Auto-fill
-                autoComplete="sms-otp" // Android Auto-fill
+                textContentType="oneTimeCode"
+                autoComplete="sms-otp"
                 placeholderTextColor="#ddd"
               />
               <TouchableOpacity 
@@ -142,7 +137,7 @@ export default function AuthScreen() {
                 {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Verify & Login</Text>}
               </TouchableOpacity>
               
-              <TouchableOpacity onPress={() => { setVerificationId(""); setOtpCode(""); }} style={styles.backButton}>
+              <TouchableOpacity onPress={() => { setConfirm(null); setOtpCode(""); }} style={styles.backButton}>
                 <Text style={styles.backButtonText}>Number badalna hai?</Text>
               </TouchableOpacity>
             </>
@@ -154,6 +149,7 @@ export default function AuthScreen() {
   );
 }
 
+// Styles wahi hain jo aapne diye the - Shopnish Premium Look!
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   card: { backgroundColor: '#fff', padding: 30, borderRadius: 30, marginHorizontal: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.05, shadowRadius: 20, elevation: 5 },

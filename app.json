@@ -18,7 +18,6 @@
     },
     "android": {
       "package": "com.shopnish.customer",
-      
       "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -46,6 +45,10 @@
       "eas": {
         "projectId": "2e3663e4-32e1-4a74-8493-676771231def"
       }
-    }
+    },
+    "plugins": [
+      "@react-native-firebase/auth",
+      "@react-native-firebase/app"
+    ]
   }
 }
