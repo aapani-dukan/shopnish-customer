@@ -1,14 +1,29 @@
-// AuthContext.tsx (Updated)
-import React, { createContext, useState, useEffect, useContext, useCallback, useMemo } from 'react';
-import { User as FirebaseUser, onAuthStateChanged, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
-import { auth, logout } from '../lib/firebase';
-import api from '../services/api';
-import { signInWithPhoneNumber } from "firebase/auth";
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useContext,
+  useCallback,
+  useMemo,
+} from "react";
+import {
+  User as FirebaseUser,
+  onAuthStateChanged,
+  signInWithPhoneNumber,
+} from "firebase/auth";
+
+import { auth, logout } from "../lib/firebase";
+import api from "../services/api";
+
+/* =======================
+   TYPES
+======================= */
+
 export interface User {
   id?: string;
   uid?: string;
   email: string | null;
-  phoneNumber: string | null; // OTP ke liye phone number add kiya
+  phoneNumber: string | null;
   name: string | null;
   role: "customer" | "seller" | "admin" | "delivery";
   isAdmin: boolean;
@@ -19,49 +34,71 @@ interface AuthContextType {
   isLoadingAuth: boolean;
   isAuthenticated: boolean;
 
-  // ✅ Mobile APK friendly OTP flow
+  // ✅ OTP flow
   sendOtp: (phoneNumber: string) => Promise<void>;
   verifyOtp: (otpCode: string) => Promise<void>;
 
   signOut: () => Promise<void>;
 }
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+/* =======================
+   PROVIDER
+======================= */
+
+export const AuthProvider = ({
+  children,
+}: {
+  children: React.ReactNode;
+}) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
-  // ✅ Sabse bada badlav yahan hai
-  const fetchAndSyncBackendUser = useCallback(async (fbUser: FirebaseUser) => {
-    try {
-      // 1. Firebase se fresh ID Token lein
-      const idToken = await fbUser.getIdToken(true);
+  // 🔥 OTP confirmation state (MOST IMPORTANT FIX)
+  const [confirmation, setConfirmation] = useState<any>(null);
 
-      // 2. /api/users/login par POST request bhejein (Jo humne Render par banaya hai)
-      // Ye naye user ko banayega aur purane user ko fetch karega
-      const res = await api.post("/api/users/login", { idToken });
-      
-      const dbUserData = res.data.user;
+  /* =======================
+     BACKEND SYNC
+  ======================= */
 
-      const newUserData: User = {
-        uid: fbUser.uid,
-        id: dbUserData.id,
-        email: dbUserData.email,
-        phoneNumber: fbUser.phoneNumber || dbUserData.phone,
-        name: dbUserData.firstName ? `${dbUserData.firstName} ${dbUserData.lastName}` : "Customer",
-        role: dbUserData.role,
-        isAdmin: dbUserData.role === "admin",
-      };
-      
-      setUser(newUserData);
-    } catch (e: any) {
-      console.error("❌ Backend sync failed:", e.response?.data || e.message);
-      // Agar backend mana kar de, toh Firebase se bhi logout kar dein
-      setUser(null);
-    } finally {
-      setIsLoadingAuth(false);
-    }
-  }, []);
+  const fetchAndSyncBackendUser = useCallback(
+    async (fbUser: FirebaseUser) => {
+      try {
+        const idToken = await fbUser.getIdToken(true);
+
+        const res = await api.post("/api/users/login", { idToken });
+        const dbUser = res.data.user;
+
+        const newUser: User = {
+          uid: fbUser.uid,
+          id: dbUser.id,
+          email: dbUser.email,
+          phoneNumber: fbUser.phoneNumber || dbUser.phone,
+          name: dbUser.firstName
+            ? `${dbUser.firstName} ${dbUser.lastName}`
+            : "Customer",
+          role: dbUser.role,
+          isAdmin: dbUser.role === "admin",
+        };
+
+        setUser(newUser);
+      } catch (err: any) {
+        console.error(
+          "❌ Backend sync failed:",
+          err?.response?.data || err.message
+        );
+        setUser(null);
+      } finally {
+        setIsLoadingAuth(false);
+      }
+    },
+    []
+  );
+
+  /* =======================
+     AUTH LISTENER
+  ======================= */
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
@@ -72,24 +109,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setIsLoadingAuth(false);
       }
     });
-    return () => unsubscribe();
+
+    return unsubscribe;
   }, [fetchAndSyncBackendUser]);
 
-  // 🔥 OTP Bhejne wala function (Real)
-  
+  /* =======================
+     OTP FUNCTIONS
+  ======================= */
 
-const [confirmation, setConfirmation] = useState<any>(null);
+  // ✅ SEND OTP
+  const sendOtp = async (phoneNumber: string) => {
+    try {
+      const formattedPhone = phoneNumber.startsWith("+91")
+        ? phoneNumber
+        : `+91${phoneNumber}`;
 
-const sendOtp = async (phoneNumber: string) => {
-  try {
-    const result = await signInWithPhoneNumber(auth, phoneNumber);
-    setConfirmation(result);
-  } catch (err) {
-    console.log("❌ SEND OTP ERROR", err);
-  }
-};
+      const result = await signInWithPhoneNumber(auth, formattedPhone);
+      setConfirmation(result);
+    } catch (err) {
+      console.log("❌ SEND OTP ERROR:", err);
+      throw err;
+    }
+  };
 
-  // 🔥 OTP Verify karke Login karne wala function
+  // ✅ VERIFY OTP
   const verifyOtp = async (otpCode: string) => {
   try {
     if (!confirmation) {
@@ -98,30 +141,68 @@ const sendOtp = async (phoneNumber: string) => {
 
     await confirmation.confirm(otpCode.trim());
   } catch (err: any) {
-    console.log("❌ VERIFY OTP ERROR", err.code, err.message);
-    alert(err.message);
+    console.log("❌ VERIFY OTP ERROR", err);
+    throw new Error(getOtpErrorMessage(err));
   }
 };
+
+  /* =======================
+     SIGN OUT
+  ======================= */
 
   const signOut = async () => {
     await logout();
     setUser(null);
+    setConfirmation(null);
   };
 
-  const value = useMemo(() => ({
-    user,
-    isLoadingAuth,
-    isAuthenticated: !!user,
-    sendOtp,
-    verifyOtp,
-    signOut,
-  }), [user, isLoadingAuth]);
+  /* =======================
+     CONTEXT VALUE
+  ======================= */
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const value = useMemo(
+    () => ({
+      user,
+      isLoadingAuth,
+      isAuthenticated: !!user,
+      sendOtp,
+      verifyOtp,
+      signOut,
+    }),
+    [user, isLoadingAuth]
+  );
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
+const getOtpErrorMessage = (error: any) => {
+  const code = error?.code;
+
+  switch (code) {
+    case "auth/invalid-verification-code":
+      return "Galat OTP dala gaya hai";
+    case "auth/code-expired":
+      return "OTP expire ho gaya hai, naya OTP mangaiye";
+    case "auth/too-many-requests":
+      return "Bahut jyada request ho gayi, thodi der baad try karein";
+    case "auth/network-request-failed":
+      return "Internet connection check karein";
+    default:
+      return "OTP verify nahi ho paaya, dobara try karein";
+  }
+};
+
+/* =======================
+   HOOK
+======================= */
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
+  if (!ctx) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
   return ctx;
 };
