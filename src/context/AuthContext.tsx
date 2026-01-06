@@ -3,7 +3,7 @@ import React, { createContext, useState, useEffect, useContext, useCallback, use
 import { User as FirebaseUser, onAuthStateChanged, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { auth, logout } from '../lib/firebase';
 import api from '../services/api';
-
+import { signInWithPhoneNumber } from "firebase/auth";
 export interface User {
   id?: string;
   uid?: string;
@@ -18,12 +18,13 @@ interface AuthContextType {
   user: User | null;
   isLoadingAuth: boolean;
   isAuthenticated: boolean;
-  // OTP ke liye naye functions
-  sendOtp: (phoneNumber: string, recaptchaVerifier: any) => Promise<string>;
-  verifyOtp: (verificationId: string, otpCode: string) => Promise<void>;
+
+  // ✅ Mobile APK friendly OTP flow
+  sendOtp: (phoneNumber: string) => Promise<void>;
+  verifyOtp: (otpCode: string) => Promise<void>;
+
   signOut: () => Promise<void>;
 }
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -75,23 +76,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [fetchAndSyncBackendUser]);
 
   // 🔥 OTP Bhejne wala function (Real)
-  const sendOtp = async (phoneNumber: string, recaptchaVerifier: any) => {
-    const phoneProvider = new PhoneAuthProvider(auth);
-    return await phoneProvider.verifyPhoneNumber(phoneNumber, recaptchaVerifier);
-  };
+  
+
+const [confirmation, setConfirmation] = useState<any>(null);
+
+const sendOtp = async (phoneNumber: string) => {
+  try {
+    const result = await signInWithPhoneNumber(auth, phoneNumber);
+    setConfirmation(result);
+  } catch (err) {
+    console.log("❌ SEND OTP ERROR", err);
+  }
+};
 
   // 🔥 OTP Verify karke Login karne wala function
-  const verifyOtp = async (verificationId: string, otpCode: string) => {
-    try {
-      const credential = PhoneAuthProvider.credential(verificationId, otpCode);
-      // Firebase login hone par onAuthStateChanged apne aap trigger hoga
-      // Aur hamara naya fetchAndSyncBackendUser chal jayega
-      await signInWithCredential(auth, credential);
-    } catch (error) {
-      console.error("❌ OTP Verification Failed:", error);
-      throw error;
+  const verifyOtp = async (otpCode: string) => {
+  try {
+    if (!confirmation) {
+      throw new Error("OTP session expired");
     }
-  };
+
+    await confirmation.confirm(otpCode.trim());
+  } catch (err: any) {
+    console.log("❌ VERIFY OTP ERROR", err.code, err.message);
+    alert(err.message);
+  }
+};
 
   const signOut = async () => {
     await logout();
