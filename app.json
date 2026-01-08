@@ -2,7 +2,7 @@
   "expo": {
     "name": "Shopnish",
     "slug": "shopnish-customer",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -27,9 +27,9 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "FOREGROUND_SERVICE",
-        "RECEIVE_SMS",
-        "READ_SMS"
+        "FOREGROUND_SERVICE"
+       
+        
       ],
       "config": {
         "googleMaps": {

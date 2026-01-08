@@ -6,15 +6,8 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import {
-  User as FirebaseUser,
-  onAuthStateChanged,
-  signInWithPhoneNumber,
-  RecaptchaVerifier, // <-- Zaroori hai
-  ConfirmationResult
-} from "firebase/auth";
-
-import { auth, logout } from "../lib/firebase";
+// ✅ Web SDK ki jagah Native SDK imports
+import auth, { FirebaseAuthTypes } from "@react-native-firebase/auth";
 import api from "../services/api";
 
 /* =======================
@@ -34,33 +27,31 @@ interface AuthContextType {
   user: User | null;
   isLoadingAuth: boolean;
   isAuthenticated: boolean;
-  sendOtp: (phoneNumber: string, elementId: string) => Promise<void>; // elementId added
+  sendOtp: (phoneNumber: string) => Promise<void>; 
   verifyOtp: (otpCode: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/* =======================
+   PROVIDER
+======================= */
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
+  
+  // ✅ Confirmation object ka type badal gaya hai
+  const [confirm, setConfirm] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
 
-  // Re-captcha setup function
-  const setupRecaptcha = (elementId: string) => {
-    if (!(window as any).recaptchaVerifier) {
-      (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, elementId, {
-        size: "invisible",
-        callback: () => {
-          console.log("Recaptcha resolved");
-        }
-      });
-    }
-  };
-
-  const fetchAndSyncBackendUser = useCallback(async (fbUser: FirebaseUser) => {
+  /* =======================
+     BACKEND SYNC
+  ======================= */
+  const fetchAndSyncBackendUser = useCallback(async (fbUser: FirebaseAuthTypes.User) => {
     try {
+      // Force refresh token for latest claims
       const idToken = await fbUser.getIdToken(true);
+
       const res = await api.post("/api/users/login", { idToken });
       const dbUser = res.data.user;
 
@@ -83,8 +74,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, []);
 
+  /* =======================
+     AUTH LISTENER
+  ======================= */
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+    // ✅ Native SDK listener
+    const unsubscribe = auth().onAuthStateChanged(async (fbUser) => {
       if (fbUser) {
         await fetchAndSyncBackendUser(fbUser);
       } else {
@@ -92,43 +87,52 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setIsLoadingAuth(false);
       }
     });
+
     return unsubscribe;
   }, [fetchAndSyncBackendUser]);
 
-  // ✅ Send OTP wrapped in useCallback
-  const sendOtp = useCallback(async (phoneNumber: string, elementId: string) => {
-    try {
-      setupRecaptcha(elementId);
-      const appVerifier = (window as any).recaptchaVerifier;
-      const formattedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+91${phoneNumber}`;
+  /* =======================
+     OTP FUNCTIONS
+  ======================= */
 
-      const result = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
-      setConfirmation(result);
-    } catch (err) {
-      if ((window as any).recaptchaVerifier) {
-        (window as any).recaptchaVerifier.clear();
-        (window as any).recaptchaVerifier = null;
-      }
-      console.error("❌ SEND OTP ERROR:", err);
+  // ✅ SEND OTP (Ab elementId ki zaroorat nahi hai!)
+  const sendOtp = useCallback(async (phoneNumber: string) => {
+    try {
+      const formattedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+91${phoneNumber}`;
+      
+      // Native SDK automatic reCAPTCHA handle karta hai (SafetyNet/Play Integrity se)
+      const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
+      setConfirm(confirmation);
+    } catch (err: any) {
+      console.error("❌ SEND OTP ERROR:", err.code, err.message);
       throw err;
     }
   }, []);
 
-  // ✅ Verify OTP wrapped in useCallback
+  // ✅ VERIFY OTP
   const verifyOtp = useCallback(async (otpCode: string) => {
     try {
-      if (!confirmation) throw new Error("OTP session expired");
-      await confirmation.confirm(otpCode.trim());
+      if (!confirm) throw new Error("OTP session expired");
+      
+      await confirm.confirm(otpCode.trim());
+      // confirm hote hi onAuthStateChanged trigger ho jayega automatically
     } catch (err: any) {
       console.error("❌ VERIFY OTP ERROR", err);
       throw new Error(getOtpErrorMessage(err));
     }
-  }, [confirmation]);
+  }, [confirm]);
 
+  /* =======================
+     SIGN OUT
+  ======================= */
   const signOut = useCallback(async () => {
-    await logout();
-    setUser(null);
-    setConfirmation(null);
+    try {
+      await auth().signOut();
+      setUser(null);
+      setConfirm(null);
+    } catch (err) {
+      console.error("Sign out error", err);
+    }
   }, []);
 
   const value = useMemo(() => ({
@@ -140,35 +144,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     signOut,
   }), [user, isLoadingAuth, sendOtp, verifyOtp, signOut]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
-
-// ... Error handler wahi rahega ...
-const getOtpErrorMessage = (error: any) => {
-  const code = error?.code;
-
-  switch (code) {
-    case "auth/invalid-verification-code":
-      return "Galat OTP dala gaya hai";
-    case "auth/code-expired":
-      return "OTP expire ho gaya hai, naya OTP mangaiye";
-    case "auth/too-many-requests":
-      return "Bahut jyada request ho gayi, thodi der baad try karein";
-    case "auth/network-request-failed":
-      return "Internet connection check karein";
-    default:
-      return "OTP verify nahi ho paaya, dobara try karein";
-  }
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 /* =======================
-   HOOK
+   ERROR HANDLER & HOOK
 ======================= */
+const getOtpErrorMessage = (error: any) => {
+  const code = error?.code;
+  switch (code) {
+    case "auth/invalid-verification-code": return "Galat OTP dala gaya hai";
+    case "auth/code-expired": return "OTP expire ho gaya hai";
+    case "auth/too-many-requests": return "Bahut jyada requests, baad mein try karein";
+    default: return "OTP verify nahi ho paaya";
+  }
+};
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
   return ctx;
 };
