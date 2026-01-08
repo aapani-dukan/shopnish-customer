@@ -10,6 +10,8 @@ import {
   User as FirebaseUser,
   onAuthStateChanged,
   signInWithPhoneNumber,
+  RecaptchaVerifier, // <-- Zaroori hai
+  ConfirmationResult
 } from "firebase/auth";
 
 import { auth, logout } from "../lib/firebase";
@@ -18,7 +20,6 @@ import api from "../services/api";
 /* =======================
    TYPES
 ======================= */
-
 export interface User {
   id?: string;
   uid?: string;
@@ -33,72 +34,54 @@ interface AuthContextType {
   user: User | null;
   isLoadingAuth: boolean;
   isAuthenticated: boolean;
-
-  // ✅ OTP flow
-  sendOtp: (phoneNumber: string) => Promise<void>;
+  sendOtp: (phoneNumber: string, elementId: string) => Promise<void>; // elementId added
   verifyOtp: (otpCode: string) => Promise<void>;
-
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/* =======================
-   PROVIDER
-======================= */
-
-export const AuthProvider = ({
-  children,
-}: {
-  children: React.ReactNode;
-}) => {
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
 
-  // 🔥 OTP confirmation state (MOST IMPORTANT FIX)
-  const [confirmation, setConfirmation] = useState<any>(null);
+  // Re-captcha setup function
+  const setupRecaptcha = (elementId: string) => {
+    if (!(window as any).recaptchaVerifier) {
+      (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, elementId, {
+        size: "invisible",
+        callback: () => {
+          console.log("Recaptcha resolved");
+        }
+      });
+    }
+  };
 
-  /* =======================
-     BACKEND SYNC
-  ======================= */
+  const fetchAndSyncBackendUser = useCallback(async (fbUser: FirebaseUser) => {
+    try {
+      const idToken = await fbUser.getIdToken(true);
+      const res = await api.post("/api/users/login", { idToken });
+      const dbUser = res.data.user;
 
-  const fetchAndSyncBackendUser = useCallback(
-    async (fbUser: FirebaseUser) => {
-      try {
-        const idToken = await fbUser.getIdToken(true);
+      const newUser: User = {
+        uid: fbUser.uid,
+        id: dbUser.id,
+        email: dbUser.email,
+        phoneNumber: fbUser.phoneNumber || dbUser.phone,
+        name: dbUser.firstName ? `${dbUser.firstName} ${dbUser.lastName}` : "Customer",
+        role: dbUser.role,
+        isAdmin: dbUser.role === "admin",
+      };
 
-        const res = await api.post("/api/users/login", { idToken });
-        const dbUser = res.data.user;
-
-        const newUser: User = {
-          uid: fbUser.uid,
-          id: dbUser.id,
-          email: dbUser.email,
-          phoneNumber: fbUser.phoneNumber || dbUser.phone,
-          name: dbUser.firstName
-            ? `${dbUser.firstName} ${dbUser.lastName}`
-            : "Customer",
-          role: dbUser.role,
-          isAdmin: dbUser.role === "admin",
-        };
-
-        setUser(newUser);
-      } catch (err: any) {
-        console.error(
-          "❌ Backend sync failed:",
-          err?.response?.data || err.message
-        );
-        setUser(null);
-      } finally {
-        setIsLoadingAuth(false);
-      }
-    },
-    []
-  );
-
-  /* =======================
-     AUTH LISTENER
-  ======================= */
+      setUser(newUser);
+    } catch (err: any) {
+      console.error("❌ Backend sync failed:", err?.response?.data || err.message);
+      setUser(null);
+    } finally {
+      setIsLoadingAuth(false);
+    }
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
@@ -109,75 +92,58 @@ export const AuthProvider = ({
         setIsLoadingAuth(false);
       }
     });
-
     return unsubscribe;
   }, [fetchAndSyncBackendUser]);
 
-  /* =======================
-     OTP FUNCTIONS
-  ======================= */
-
-  // ✅ SEND OTP
-  const sendOtp = async (phoneNumber: string) => {
+  // ✅ Send OTP wrapped in useCallback
+  const sendOtp = useCallback(async (phoneNumber: string, elementId: string) => {
     try {
-      const formattedPhone = phoneNumber.startsWith("+91")
-        ? phoneNumber
-        : `+91${phoneNumber}`;
+      setupRecaptcha(elementId);
+      const appVerifier = (window as any).recaptchaVerifier;
+      const formattedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+91${phoneNumber}`;
 
-      const result = await signInWithPhoneNumber(auth, formattedPhone);
+      const result = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
       setConfirmation(result);
     } catch (err) {
-      console.log("❌ SEND OTP ERROR:", err);
+      if ((window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier.clear();
+        (window as any).recaptchaVerifier = null;
+      }
+      console.error("❌ SEND OTP ERROR:", err);
       throw err;
     }
-  };
+  }, []);
 
-  // ✅ VERIFY OTP
-  const verifyOtp = async (otpCode: string) => {
-  try {
-    if (!confirmation) {
-      throw new Error("OTP session expired");
+  // ✅ Verify OTP wrapped in useCallback
+  const verifyOtp = useCallback(async (otpCode: string) => {
+    try {
+      if (!confirmation) throw new Error("OTP session expired");
+      await confirmation.confirm(otpCode.trim());
+    } catch (err: any) {
+      console.error("❌ VERIFY OTP ERROR", err);
+      throw new Error(getOtpErrorMessage(err));
     }
+  }, [confirmation]);
 
-    await confirmation.confirm(otpCode.trim());
-  } catch (err: any) {
-    console.log("❌ VERIFY OTP ERROR", err);
-    throw new Error(getOtpErrorMessage(err));
-  }
-};
-
-  /* =======================
-     SIGN OUT
-  ======================= */
-
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await logout();
     setUser(null);
     setConfirmation(null);
-  };
+  }, []);
 
-  /* =======================
-     CONTEXT VALUE
-  ======================= */
+  const value = useMemo(() => ({
+    user,
+    isLoadingAuth,
+    isAuthenticated: !!user,
+    sendOtp,
+    verifyOtp,
+    signOut,
+  }), [user, isLoadingAuth, sendOtp, verifyOtp, signOut]);
 
-  const value = useMemo(
-    () => ({
-      user,
-      isLoadingAuth,
-      isAuthenticated: !!user,
-      sendOtp,
-      verifyOtp,
-      signOut,
-    }),
-    [user, isLoadingAuth]
-  );
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
+// ... Error handler wahi rahega ...
 const getOtpErrorMessage = (error: any) => {
   const code = error?.code;
 

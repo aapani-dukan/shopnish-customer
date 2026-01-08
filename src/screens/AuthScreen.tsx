@@ -64,25 +64,27 @@ export default function AuthScreen() {
   /* =====================
      SEND OTP
   ===================== */
-  const handleSendOtp = async () => {
-    if (phoneNumber.length !== 10) {
-      Alert.alert("Error", "Kripya 10 digit ka mobile number daalein");
-      return;
-    }
+  // AuthContext.tsx se update kiya gaya function call
+const handleSendOtp = async () => {
+  if (phoneNumber.length !== 10) {
+    Alert.alert("Error", "Kripya 10 digit ka mobile number daalein");
+    return;
+  }
 
-    setIsLoading(true);
-    try {
-      await sendOtp(phoneNumber);
-      setIsOtpSent(true);
-    } catch (err) {
-      Alert.alert(
-        "OTP Error",
-        "OTP bhejne mein dikkat hui. Internet / Firebase settings check karein."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  setIsLoading(true);
+  try {
+    // Agar aapne mera pichla context wala code copy kiya hai, 
+    // toh wahan 2 parameters chahiye: (phoneNumber, elementId)
+    // Mobile par 'elementId' ki jagah null ya invisible container chahiye.
+    await sendOtp(phoneNumber, "recaptcha-container"); 
+    setIsOtpSent(true);
+  } catch (err: any) {
+    console.log(err.code); // Isse check karein exact error kya hai
+    Alert.alert("OTP Error", err.message);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   /* =====================
      VERIFY OTP
