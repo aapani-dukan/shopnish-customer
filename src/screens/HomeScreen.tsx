@@ -40,7 +40,26 @@ export default function HomeScreen() {
   const { currentLocation } = useLocation();
   const { getCartCount } = useCart();
   const cartCount = getCartCount();
+  const handleBannerPress = (item: any) => {
+  if (!item.actionValue) return;
 
+  switch (item.actionType) {
+    case 'CATEGORY':
+      // Banner click par category filter apply karega ya category screen par jayega
+      setSelectedCategoryId(Number(item.actionValue));
+      break;
+    case 'PRODUCT':
+      // Direct product page par bhej dega
+      navigation.navigate('ProductDetails', { productId: item.actionValue });
+      break;
+    case 'SEARCH':
+      // Search screen par bhej dega specific query ke saath
+      navigation.navigate('Search', { initialQuery: item.actionValue });
+      break;
+    default:
+      console.log("Unknown action type");
+  }
+};
   // 1. Fetch Categories
   const { data: categories = [] } = useQuery<any[]>({
     queryKey: ["/api/categories"],
@@ -53,7 +72,7 @@ export default function HomeScreen() {
       const queryParams: any = {
         lat: currentLocation?.latitude || 25.4419,
         lng: currentLocation?.longitude || 75.6597,
-        pincode: currentLocation?.pincode || "323001" 
+        pincode: currentLocation?.pincode || "" 
       };
       if (selectedCategoryId) queryParams.categoryId = selectedCategoryId;
       const res = await api.get("/api/products", { params: queryParams });
@@ -61,7 +80,17 @@ export default function HomeScreen() {
     },
     enabled: true,
   });
-  
+  // 3. Fetch Home Layout (Banners)
+const { data: layoutSections = [], isLoading: layoutLoading } = useQuery<any[]>({
+  queryKey: ["/api/layout/public", currentLocation?.pincode],
+  queryFn: async () => {
+    const res = await api.get(`/api/layout/public`, {
+      params: { pincode: currentLocation?.pincode  }
+    });
+    return res.data;
+  },
+  enabled: !!currentLocation?.pincode,
+});
   const products = productsData?.products || [];
 
   // 🏛️ Address Selector Modal Component
@@ -121,7 +150,34 @@ export default function HomeScreen() {
         <Text style={styles.searchText}>Search premium products...</Text>
         <Filter size={18} color="#2563eb" />
       </TouchableOpacity>
-
+      {/* 🚀 🆕 Dynamic Banner Section */}
+    {!selectedCategoryId && layoutSections.length > 0 && (
+      <RNScrollView 
+        horizontal 
+        pagingEnabled 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.bannerContainer}
+      >
+        {layoutSections
+          .filter(s => s.sectionType === 'main_banner' || s.sectionType === 'HERO_BANNER')
+          .map((section: any) => (
+            <TouchableOpacity 
+              key={section.id} 
+              activeOpacity={0.9}
+              style={styles.bannerWrapper}
+              onPress={() => handleBannerPress(section.config.items[0])}
+            >
+              <Image 
+                source={{ uri: section.config.items[0]?.image }} 
+                style={styles.bannerImage} 
+              />
+              <View style={styles.bannerOverlay}>
+                <Text style={styles.bannerTitle}>{section.config.items[0]?.title}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+      </RNScrollView>
+    )}
       {/* Categories Section */}
       <View style={styles.sectionHeader}>
         <View style={styles.row}>
@@ -275,6 +331,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 15, 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' 
   },
+  bannerContainer: { paddingHorizontal: 20, marginBottom: 10 },
+  bannerWrapper: {
+    width: width - 40,
+    height: 180,
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginRight: 10,
+    backgroundColor: '#f1f5f9'
+  },
+  bannerImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  bannerOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  bannerTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitle: { fontSize: 20, fontWeight: '800', color: '#0f172a' },
   clearBtn: { color: '#2563eb', fontWeight: 'bold' },

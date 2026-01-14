@@ -1,23 +1,31 @@
 import axios from 'axios';
-import { auth } from '../lib/firebase';
+// ✅ BADLAV: getIdToken ko modular import karein
+import { getAuth, getIdToken } from '@react-native-firebase/auth';
+
+const auth = getAuth();
 
 const api = axios.create({
-  // ✅ Pro-Tip: Ensure your Render URL is exactly this
   baseURL: 'https://shopnish-seprate.onrender.com', 
-  timeout: 15000, // Timeout thoda badha diya (Render free tier kabhi-kabhi "Cold Start" leta hai)
+  timeout: 15000, 
 });
 
 api.interceptors.request.use(async (config) => {
-  const user = auth.currentUser;
-  
-  if (user) {
-    try {
-      // ✅ Force refresh agar token expire hone wala ho
-      const token = await user.getIdToken(false); 
+  try {
+    const user = auth.currentUser;
+    
+    if (user) {
+      // ✅ FIX: Modular way to get token (Zero Warnings)
+      const token = await getIdToken(user); 
+      
       config.headers.Authorization = `Bearer ${token}`;
-    } catch (e) {
-      console.error("❌ [API Interceptor] Token fetch failed:", e);
+      // Pro-Tip: Production mein is log ko hata dena
+      console.log("✅ Token attached to request");
+    } else {
+      // Isko warn se debug kar dein taaki terminal pehle se zyada clean rahe
+      console.debug("⚠️ No active session");
     }
+  } catch (e) {
+    console.error("❌ [API Interceptor] Token fetch failed:", e);
   }
   
   config.headers['X-Platform'] = 'mobile-android';
@@ -28,12 +36,11 @@ api.interceptors.request.use(async (config) => {
   return Promise.reject(error);
 });
 
-// ✅ Optional: Response Interceptor (Error handling ke liye)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      console.warn("🔒 Token expired or invalid, user might need to re-login");
+      console.warn("🔒 Session expired, redirecting to login...");
     }
     return Promise.reject(error);
   }

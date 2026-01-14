@@ -5,10 +5,12 @@ import MapViewDirections from 'react-native-maps-directions';
 import { io } from 'socket.io-client';
 import { Truck, MapPin, Phone, ChevronLeft, Package, Store, Clock, ShieldCheck } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth } from '../lib/firebase'; // 🟢 Firebase Auth Import
+// ✅ Updated Imports (Modular SDK)
+import { getAuth, getIdToken } from '@react-native-firebase/auth';
 
 const { width, height } = Dimensions.get('window');
 const GOOGLE_MAPS_APIKEY = 'AIzaSyD4G0AfOt0YPc9d0NwAyo1l_t51qra6xxw';
+const auth = getAuth();
 
 export default function TrackOrderScreen({ route, navigation }: any) {
   const orderId = route?.params?.orderId;
@@ -16,8 +18,8 @@ export default function TrackOrderScreen({ route, navigation }: any) {
   const [liveLocations, setLiveLocations] = useState<Map<number, any>>(new Map());
   const [liveETA, setLiveETA] = useState<string | null>(null);
   const socket = useRef<any>(null);
+  const mapRef = useRef<MapView>(null); // ✅ Auto-zoom ke liye
 
-  // 🟢 1. Web Logic: Get Display ETA (Priority: Backend > Map > Fallback)
   const getDisplayETA = () => {
     if (trackingData?.estimatedDeliveryTime) {
       return new Date(trackingData.estimatedDeliveryTime).toLocaleTimeString([], {
@@ -51,12 +53,14 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     return '#64748b';
   };
 
-  // 🟢 2. Fetch Data with Firebase Token (Fixes 401 Error)
+  // ✅ 1. Fetch Data (Modular Token Logic)
   const fetchTracking = async () => {
     try {
-      const fbUser = auth.currentUser;
+      const fbUser = auth.currentUser; 
       if (!fbUser) return;
-      const token = await fbUser.getIdToken();
+      
+      // ✅ Modular way to get token (No warning)
+      const token = await getIdToken(fbUser);
 
       const res = await fetch(`https://shopnish-seprate.onrender.com/api/orders/${orderId}/tracking`, {
         headers: {
@@ -66,7 +70,7 @@ export default function TrackOrderScreen({ route, navigation }: any) {
       });
 
       if (res.status === 401) {
-        console.error("❌ Auth Failed: Check Backend Token Verification");
+        console.error("❌ Auth Failed: Token invalid");
         return;
       }
 
@@ -77,11 +81,13 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     }
   };
 
-  // 🟢 3. Socket Connection with Token (Fixes Socket Rejection)
+  // ✅ 2. Socket Initialization
   useEffect(() => {
     const initSocket = async () => {
       const fbUser = auth.currentUser;
-      const token = await fbUser?.getIdToken();
+      if (!fbUser) return;
+      
+      const token = await getIdToken(fbUser);
 
       socket.current = io("https://shopnish-seprate.onrender.com", { 
         transports: ['websocket'],
@@ -107,10 +113,12 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     fetchTracking();
     initSocket();
 
-    return () => socket.current?.disconnect();
+    return () => {
+      socket.current?.disconnect();
+    };
   }, [orderId]);
 
-  // 🟢 4. Map Logic (Coordinates Parsing)
+  // ✅ 3. Map Coordinates Logic
   const mapNodes = useMemo(() => {
     if (!trackingData || !trackingData.deliveryBatchesSummary?.length) return null;
 
@@ -121,7 +129,6 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     const rLat = parseFloat(String(live?.lat || db?.currentLocation?.lat || 0));
     const rLng = parseFloat(String(live?.lng || db?.currentLocation?.lng || 0));
     
-    // Yahan agar 0 aa raha ho toh debugging ke liye manual coords dalkar check kar sakte hain
     const cLat = parseFloat(String(trackingData.customerDeliveryAddress?.latitude || 0));
     const cLng = parseFloat(String(trackingData.customerDeliveryAddress?.longitude || 0));
 
@@ -157,11 +164,12 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.mapWrapper}>
         <MapView
+          ref={mapRef}
           provider={PROVIDER_GOOGLE}
           style={styles.map}
           initialRegion={{
-            latitude: mapNodes?.riderPos?.latitude || trackingData.customerDeliveryAddress?.latitude || 25.44,
-            longitude: mapNodes?.riderPos?.longitude || trackingData.customerDeliveryAddress?.longitude || 75.66,
+            latitude: mapNodes?.riderPos?.latitude || 25.44,
+            longitude: mapNodes?.riderPos?.longitude || 75.66,
             latitudeDelta: 0.015,
             longitudeDelta: 0.015,
           }}
@@ -176,14 +184,31 @@ export default function TrackOrderScreen({ route, navigation }: any) {
                 strokeColor="#7c3aed"
                 optimizeWaypoints={true}
                 mode="DRIVING"
-                onReady={result => setLiveETA(`${Math.ceil(result.duration)} mins`)}
-                onError={(err) => console.log("Directions Error:", err)}
+                precision="high"
+                onReady={result => {
+                  console.log("✅ Route Found:", result.distance, "km");
+                  setLiveETA(`${Math.ceil(result.duration)} mins`);
+                  // ✅ Auto-fit markers
+                  mapRef.current?.fitToCoordinates([mapNodes.riderPos, mapNodes.destinationPos], {
+                    edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+                    animated: true,
+                  });
+                }}
+                onError={(err) => console.log("❌ Directions Error:", err)}
               />
-              <Marker coordinate={mapNodes.riderPos} anchor={{x:0.5, y:0.5}}>
-                <View style={[styles.markerBase, {backgroundColor: '#7c3aed'}]}><Truck color="#fff" size={16} /></View>
+              
+              {/* Rider Marker */}
+              <Marker coordinate={mapNodes.riderPos} anchor={{x:0.5, y:0.5}} flat={true}>
+                <View style={[styles.markerBase, {backgroundColor: '#7c3aed'}]}>
+                  <Truck color="#fff" size={16} />
+                </View>
               </Marker>
+
+              {/* Customer/Destination Marker */}
               <Marker coordinate={mapNodes.destinationPos}>
-                <View style={[styles.markerBase, {backgroundColor: '#ef4444'}]}><MapPin color="#fff" size={16} /></View>
+                <View style={[styles.markerBase, {backgroundColor: '#ef4444'}]}>
+                  <MapPin color="#fff" size={16} />
+                </View>
               </Marker>
             </>
           )}

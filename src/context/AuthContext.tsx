@@ -1,17 +1,17 @@
-import React, {
-  createContext,
-  useState,
-  useEffect,
-  useContext,
-  useCallback,
-  useMemo,
-} from "react";
-// ✅ Web SDK ki jagah Native SDK imports
-import auth, { FirebaseAuthTypes } from "@react-native-firebase/auth";
+import React, { createContext, useState, useEffect, useContext, useCallback, useMemo } from "react";
+// ✅ Standalone functions import karein warnings hatane ke liye
+import { 
+  getAuth, 
+  getIdToken,
+  onAuthStateChanged, 
+  signInWithPhoneNumber, 
+  signOut as firebaseSignOut,
+  FirebaseAuthTypes 
+} from "@react-native-firebase/auth";
 import api from "../services/api";
 
 /* =======================
-   TYPES
+   TYPES & INITIALIZATION
 ======================= */
 export interface User {
   id?: string;
@@ -32,25 +32,29 @@ interface AuthContextType {
   signOut: () => Promise<void>;
 }
 
+// ✅ Native SDK auth instance
+const auth = getAuth(); 
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/* =======================
-   PROVIDER
-======================= */
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  
-  // ✅ Confirmation object ka type badal gaya hai
   const [confirm, setConfirm] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
 
   /* =======================
      BACKEND SYNC
   ======================= */
-  const fetchAndSyncBackendUser = useCallback(async (fbUser: FirebaseAuthTypes.User) => {
+  
+
+      const fetchAndSyncBackendUser = useCallback(async (fbUser: FirebaseAuthTypes.User) => {
     try {
-      // Force refresh token for latest claims
-      const idToken = await fbUser.getIdToken(true);
+      // ✅ FIX: Functional style use karein warnings hatane ke liye
+      // Purana: const idToken = await fbUser.getIdToken(); ❌
+      const idToken = await getIdToken(fbUser); // ✅ Correct Modular Way
+
+      api.defaults.headers.common['Authorization'] = `Bearer ${idToken}`;
+      console.log("✅ Token attached to request");
 
       const res = await api.post("/api/users/login", { idToken });
       const dbUser = res.data.user;
@@ -68,18 +72,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(newUser);
     } catch (err: any) {
       console.error("❌ Backend sync failed:", err?.response?.data || err.message);
+      delete api.defaults.headers.common['Authorization'];
       setUser(null);
     } finally {
       setIsLoadingAuth(false);
     }
-  }, []);
+}, [setUser, setIsLoadingAuth]); //
 
   /* =======================
      AUTH LISTENER
   ======================= */
   useEffect(() => {
-    // ✅ Native SDK listener
-    const unsubscribe = auth().onAuthStateChanged(async (fbUser) => {
+    // ✅ FIX 2: Modular Listener (auth.onAuthStateChanged ki jagah onAuthStateChanged(auth, ...))
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         await fetchAndSyncBackendUser(fbUser);
       } else {
@@ -95,13 +100,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      OTP FUNCTIONS
   ======================= */
 
-  // ✅ SEND OTP (Ab elementId ki zaroorat nahi hai!)
   const sendOtp = useCallback(async (phoneNumber: string) => {
     try {
       const formattedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+91${phoneNumber}`;
       
-      // Native SDK automatic reCAPTCHA handle karta hai (SafetyNet/Play Integrity se)
-      const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
+      // ✅ FIX 3: Modular signInWithPhoneNumber(auth, phone)
+      const confirmation = await signInWithPhoneNumber(auth, formattedPhone);
       setConfirm(confirmation);
     } catch (err: any) {
       console.error("❌ SEND OTP ERROR:", err.code, err.message);
@@ -109,13 +113,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, []);
 
-  // ✅ VERIFY OTP
   const verifyOtp = useCallback(async (otpCode: string) => {
     try {
       if (!confirm) throw new Error("OTP session expired");
-      
       await confirm.confirm(otpCode.trim());
-      // confirm hote hi onAuthStateChanged trigger ho jayega automatically
     } catch (err: any) {
       console.error("❌ VERIFY OTP ERROR", err);
       throw new Error(getOtpErrorMessage(err));
@@ -127,7 +128,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   ======================= */
   const signOut = useCallback(async () => {
     try {
-      await auth().signOut();
+      // ✅ FIX 4: Modular SignOut(auth)
+      await firebaseSignOut(auth);
+      delete api.defaults.headers.common['Authorization'];
       setUser(null);
       setConfirm(null);
     } catch (err) {
