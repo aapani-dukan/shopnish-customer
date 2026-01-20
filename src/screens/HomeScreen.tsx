@@ -245,80 +245,86 @@ const { data: layoutSections = [], isLoading: layoutLoading } = useQuery<any[]>(
   ))}
 </RNScrollView>
 
-{/* 4. THE MAGIC: Category-wise Sections (Mall Layout) */}
-
+    {/* 4. Category-wise Sections */}
     {!selectedCategoryId && categories.map((cat: any) => {
-  
-  // ✅ यह फ़िल्टर सबसे सटीक है
-  const categoryProducts = products.filter((p: any) => {
-    // डेटाबेस वाले कॉलम का नाम यहाँ बिल्कुल सही लिखें
-    const prodCatId = p.categoryId; 
-    const currentCatId = cat.id;
+      // Products filter logic
+      const categoryProducts = products.filter((p: any) => 
+        String(p.categoryId) === String(cat.id)
+      ).slice(0, 6);
 
-    // दोनों को String में बदलकर और खाली जगह साफ़ करके मैच करें
-    return String(prodCatId).trim() === String(currentCatId).trim();
-  }).slice(0, 6);
+      return (
+        <View key={cat.id} style={styles.mallSection}>
+          {/* Header: Icon + Name + See All */}
+          <View style={styles.sectionHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 22, marginRight: 8 }}>{cat.icon || '📦'}</Text> 
+              <Text style={styles.mallSectionTitle}>{cat.name}</Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('CategoryDetails', { catId: cat.id, catName: cat.name })}>
+              <Text style={styles.clearBtn}>सब देखें</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* Products Grid */}
+          {categoryProducts.length > 0 ? (
+            <View style={styles.gridContainer}>
+              {renderMallGrid(categoryProducts, 'grid')}
+            </View>
+          ) : (
+            <Text style={{ color: '#9ca3af', marginLeft: 20, marginBottom: 10 }}>
+              जल्द आ रहा है...
+            </Text>
+          )}
 
-  return (
-    <View key={cat.id} style={styles.mallSection}>
-      <View style={styles.sectionHeader}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ fontSize: 22, marginRight: 8 }}>{cat.icon}</Text> 
-          <Text style={styles.mallSectionTitle}>{cat.name}</Text>
+          {/* Real Shops Section (Real Data from API) */}
+          {cat.shops && cat.shops.length > 0 ? (
+            <View>
+              {renderMallShops(cat.shops.slice(0, 2))}
+              
+              {cat.shops.length > 2 ? (
+                <TouchableOpacity 
+                  style={{ padding: 10, alignItems: 'center' }}
+                  onPress={() => navigation.navigate('CategoryShops', { catId: cat.id, catName: cat.name })}
+                >
+                  <Text style={{ color: '#2563eb', fontWeight: 'bold' }}>
+                    {`See All ${cat.shops.length} Shops in ${cat.name} →`}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : (
+            <Text style={{ paddingLeft: 20, color: '#94a3b8', fontSize: 12, marginBottom: 10 }}>
+              No shops available in this category yet.
+            </Text>
+          )}
+
+          <View style={styles.divider} />
         </View>
-        <TouchableOpacity onPress={() => navigation.navigate('CategoryDetails', { catId: cat.id, catName: cat.name })}>
+      );
+    })}
+
+    {/* 5. Trending Section (Map ke bahar) */}
+    <View style={{ paddingBottom: 100 }}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Trending Products Nearby</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Search')}>
           <Text style={styles.clearBtn}>सब देखें</Text>
         </TouchableOpacity>
       </View>
-      
-      {/* 🟢 अब यहाँ 'cat.products' की जगह 'categoryProducts' लिखें */}
-      {categoryProducts.length > 0 ? (
+
+      {/* Trending Products Grid */}
+      {products && products.length > 0 ? (
         <View style={styles.gridContainer}>
-          {renderMallGrid(categoryProducts, 'grid')}
+          {renderMallGrid(products.slice(0, 10), 'grid')} 
         </View>
       ) : (
-        <View>
-           <Text style={{ color: '#9ca3af', marginLeft: 20 }}>
-             जल्द आ रहा है... (Debug: P-Cat: {products[0]?.categoryId} | C-ID: {cat.id})
-           </Text>
+        <View style={{ padding: 20, alignItems: 'center' }}>
+          <ActivityIndicator size="small" color="#2563eb" />
         </View>
-      )}  
-      
-    {/* Shops - अब यहाँ डमी डेटा की जगह cat.shops का इस्तेमाल करें */}
-    {/* Har Category ke niche real shops dikhane ke liye */}
-{cat.shops && cat.shops.length > 0 ? (
-  <View>
-    {renderMallShops(cat.shops.slice(0, 2))} {/* Pehli 2 shops */}
-    
-    {cat.shops.length > 2 && (
-      <TouchableOpacity 
-        style={{ padding: 10, alignItems: 'center' }}
-        onPress={() => navigation.navigate('CategoryShops', { catId: cat.id, catName: cat.name })}
-      >
-        <Text style={{ color: '#2563eb', fontWeight: 'bold' }}>
-          See All {cat.shops.length} Shops in {cat.name} →
-        </Text>
-      </TouchableOpacity>
-    )}
+      )}
+    </View>
   </View>
-) : (
-  <Text style={{ paddingLeft: 20, color: '#94a3b8', fontSize: 12 }}>
-    No shops available in this category yet.
-  </Text>
-)}
-
-    {/* Section Divider for High-Class look */}
-    <View style={styles.divider} />
-  </View>
-)
-})}
-
-<View style={styles.sectionHeader}>
-  <Text style={styles.sectionTitle}>Trending Products Nearby</Text>
-</View>
-</View>
-  );
-      
+);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
