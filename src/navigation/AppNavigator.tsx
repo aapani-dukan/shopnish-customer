@@ -22,6 +22,7 @@ import TrackOrderScreen from '../screens/TrackOrderScreen';
 import AddressesScreen from '../screens/AddressesScreen';
 import OrderDetailsScreen from '../screens/OrderDetailsScreen';
 import MapPickerScreen from '../screens/MapPickerScreen';
+import CategoryDetailsScreen from '../screens/CategoryDetailsScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -79,6 +80,7 @@ export default function AppNavigator() {
               component={TrackOrderScreen} 
               options={{ headerShown: true, title: 'Live Tracking' }}
             />
+            <Stack.Screen name="CategoryDetails" component={CategoryDetailsScreen} />
           </>
         )}
       </Stack.Navigator>
