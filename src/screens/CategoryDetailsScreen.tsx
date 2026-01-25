@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, Text, FlatList, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import api from '../services/api'; // आपका API पाथ
+import api from '../services/api';
+
+const { width } = Dimensions.get('window');
 
 export default function CategoryDetailsScreen({ route, navigation }: any) {
   const { catId, catName } = route.params;
@@ -14,23 +16,42 @@ export default function CategoryDetailsScreen({ route, navigation }: any) {
     },
   });
 
+  if (isLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
+
+  if (!isLoading && products.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text style={{ color: '#64748b' }}>No products found in this category.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.backBtn}>← Back</Text>
+        </TouchableOpacity>
         <Text style={styles.title}>{catName}</Text>
       </View>
 
       <FlatList
         data={products}
         numColumns={2}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item) => String(item.id || item._id)}
         renderItem={({ item }) => (
           <TouchableOpacity 
             style={styles.card}
-            onPress={() => navigation.navigate('ProductDetails', { productId: item.id })}
+            onPress={() => navigation.navigate('ProductDetails', { productId: item.id || item._id })}
           >
             <Image source={{ uri: item.image }} style={styles.img} />
-            <Text style={styles.name}>{item.name}</Text>
+            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
             <Text style={styles.price}>₹{item.price}</Text>
           </TouchableOpacity>
         )}
@@ -42,10 +63,23 @@ export default function CategoryDetailsScreen({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  header: { padding: 20, borderBottomWidth: 1, borderColor: '#eee', marginTop: 40 },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#1e293b' },
-  card: { flex: 1, margin: 8, backgroundColor: '#f8fafc', borderRadius: 12, padding: 10 },
-  img: { width: '100%', height: 150, borderRadius: 8, marginBottom: 8 },
-  name: { fontSize: 14, fontWeight: '600' },
-  price: { fontSize: 14, color: '#2563eb', fontWeight: 'bold' }
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderColor: '#eee' },
+  backBtn: { fontSize: 18, color: '#2563eb' },
+  title: { fontSize: 22, fontWeight: '900', marginLeft: 10, color: '#1e293b' },
+  card: {
+    flex: 1,
+    margin: 8,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingBottom: 10,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  img: { width: '100%', height: 150, borderTopLeftRadius: 16, borderTopRightRadius: 16, resizeMode: 'cover' },
+  name: { fontSize: 14, fontWeight: '600', marginTop: 5 },
+  price: { fontSize: 14, color: '#2563eb', fontWeight: 'bold', marginTop: 2 },
 });
