@@ -1,44 +1,27 @@
 // screens/Home/BannerCarousel.tsx
 import React, { useState, useRef } from 'react';
 import { View, Image, TouchableOpacity, StyleSheet, Dimensions, Text, ScrollView } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
+// Interface को डेटा के हिसाब से लचीला बनाया
 interface BannerItem {
-  id: string | number;
+  id?: string | number;
   image: string;
   title?: string;
-  actionType?: 'CATEGORY' | 'PRODUCT' | 'SEARCH';
-  actionValue?: string | number;
+  productId?: number;
+  categoryId?: number;
+  deeplink?: string;
 }
 
 interface BannerCarouselProps {
   banners: BannerItem[];
+  onPress: (banner: any) => void; // HomeScreen से आने वाला फंक्शन
 }
 
-const BannerCarousel: React.FC<BannerCarouselProps> = ({ banners }) => {
-  const navigation = useNavigation<any>();
+const BannerCarousel: React.FC<BannerCarouselProps> = ({ banners, onPress }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
-
-  const handleBannerPress = (item: BannerItem) => {
-    if (!item.actionValue) return;
-
-    switch (item.actionType) {
-      case 'CATEGORY':
-        navigation.navigate('CategoryDetails', { catId: item.actionValue });
-        break;
-      case 'PRODUCT':
-        navigation.navigate('ProductDetails', { productId: item.actionValue });
-        break;
-      case 'SEARCH':
-        navigation.navigate('Search', { initialQuery: item.actionValue });
-        break;
-      default:
-        console.log("Unknown banner action type");
-    }
-  };
 
   const onScroll = (event: any) => {
     const index = Math.round(event.nativeEvent.contentOffset.x / (width - 40));
@@ -50,8 +33,8 @@ const BannerCarousel: React.FC<BannerCarouselProps> = ({ banners }) => {
       <ScrollView
         ref={scrollRef}
         horizontal
-        snapToInterval={width - 30} // बैनर की चौड़ाई + मार्जिन
-  decelerationRate="fast"
+        snapToInterval={width - 30}
+        decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContainer}
         onScroll={onScroll}
@@ -61,7 +44,8 @@ const BannerCarousel: React.FC<BannerCarouselProps> = ({ banners }) => {
           <TouchableOpacity
             key={item.id || `banner-${index}`}
             style={styles.bannerWrapper}
-            onPress={() => handleBannerPress(item)}
+            // ✅ यहाँ बदलाव किया: अब यह सीधा HomeScreen वाले logic को कॉल करेगा
+            onPress={() => onPress(item)} 
             activeOpacity={0.9}
           >
             <Image source={{ uri: item.image }} style={styles.bannerImage} />
@@ -90,6 +74,7 @@ const BannerCarousel: React.FC<BannerCarouselProps> = ({ banners }) => {
   );
 };
 
+// ... Styles remain the same ...
 const styles = StyleSheet.create({
   container: { marginBottom: 20 },
   scrollContainer: { paddingHorizontal: 20 },

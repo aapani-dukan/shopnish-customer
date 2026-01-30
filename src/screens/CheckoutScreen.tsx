@@ -9,7 +9,7 @@ import { useLocation } from '../context/LocationContext';
 import api from '../services/api';
 import { CreditCard, ChevronLeft, CheckCircle2 } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
-
+import { useQuery } from '@tanstack/react-query';
 export default function CheckoutScreen() {
   const navigation = useNavigation<any>();
   const { cart, getCartTotal, clearCart } = useCart();
@@ -28,77 +28,76 @@ export default function CheckoutScreen() {
   const [landmark, setLandmark] = useState('');
   const [instructions, setInstructions] = useState('');
 
-  const subtotal = getCartTotal();
-  const deliveryCharge = subtotal >= 500 ? 0 : 25;
-  const total = subtotal + deliveryCharge;
+ // CheckoutScreen.tsx के अंदर
+
+// 1. एडमिन सेटिंग्स मंगवाएं (जैसे आपने होम स्क्रीन पर डेटा मंगवाया था)
+const { data: adminSettings } = useQuery({
+  queryKey: ['adminSettings'],
+  queryFn: async () => (await api.get('/api/admin/public-settings')).data, // पब्लिक API बनाएं
+});
+
+const subtotal = getCartTotal();
+
+// 2. एडमिन की वैल्यू का इस्तेमाल करें, अगर डेटा न मिले तो 'Fallback' वैल्यू (500) रखें
+const freeLimit = adminSettings?.freeDeliveryMinOrderValue ?? 500;
+const baseCharge = adminSettings?.baseDeliveryCharge ?? 25;
+
+const deliveryCharge = subtotal >= freeLimit ? 0 : baseCharge;
+const total = subtotal + deliveryCharge;
 
   // ✅ Step-by-Step validation logic
   const handlePlaceOrder = async () => {
-    // Basic check as per your working direct buy screen
-    if (!fullName || !phone || !address) {
-      Alert.alert("Error", "Please add your delivery address and phone number to proceed.");
-      return;
+  if (!fullName || !phone || !address) {
+    Alert.alert("अधूरा पता", "कृपया अपना नाम, नंबर और पूरा पता दर्ज करें।");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    // ✅ Multi-Seller Structure: हर आइटम के साथ उसका sellerId भेजना ज़रूरी है
+    const itemsToOrder = cart.map(item => ({
+      productId: item.productId,
+      sellerId: item.product?.sellerId, // 👈 पक्का करें कि ये डेटा आपके कार्ट में आ रहा है
+      quantity: item.quantity,
+      unitPrice: Number(item.product?.price || 0),
+      totalPrice: Number(item.product?.price || 0) * item.quantity,
+    }));
+
+    const orderData = {
+      customerId: user?.id,
+      deliveryAddress: { 
+        fullName,
+        phoneNumber: phone, 
+        address,
+        city: city, // Hardcode के बजाय State variable इस्तेमाल करें
+        pincode: pincode,
+        latitude: currentLocation?.latitude,
+        longitude: currentLocation?.longitude,
+      },
+      paymentMethod: "cod",
+      deliveryInstructions: instructions,
+      // 💸 Amounts को हमेशा Number() में कन्वर्ट करके भेजें (Backend Safety)
+      subtotal: Number(subtotal),
+      deliveryCharge: Number(deliveryCharge),
+      total: Number(total),
+      items: itemsToOrder,
+      orderSource: "app", // ट्रैक करने के लिए कि ऑर्डर कहाँ से आया
+    };
+
+    const response = await api.post('/api/orders', orderData);
+
+    if (response.status === 201 || response.status === 200) {
+      clearCart();
+      // ✅ OrderSuccessScreen पर नेविगेट करें (अगर बनी हुई है)
+      navigation.replace('OrderSuccess', { orderId: response.data.id });
     }
-
-    try {
-      setLoading(true);
-
-      // ✅ Mapping items as per Backend requirement
-      const itemsToOrder = cart.map(item => ({
-        productId: item.productId,
-        sellerId: item.product?.sellerId,
-        quantity: item.quantity,
-        unitPrice: Number(item.product?.price || 0),
-        priceAtAdded: Number(item.product?.price || 0),
-        totalPrice: Number(item.product?.price || 0) * item.quantity,
-      }));
-
-      // ✅ Final Payload: Syncing with Direct Buy logic
-      const orderData = {
-        customerId: user?.id,
-        newDeliveryAddress: { 
-          fullName,
-          phoneNumber: phone, 
-          address,
-          city: "Bundi",
-          state: "Rajasthan", 
-          pincode: "323001",
-          latitude: Number(currentLocation?.latitude || 0),
-          longitude: Number(currentLocation?.longitude || 0),
-        },
-        paymentMethod: "cod",
-        deliveryInstructions: instructions || "",
-        subtotal: Number(subtotal), 
-        total: Number(total),       
-        deliveryCharge: Number(deliveryCharge), 
-        items: itemsToOrder,
-        cartOrder: true,
-      };
-
-      console.log("SENDING CART ORDER PAYLOAD:", orderData);
-
-      const response = await api.post('/api/orders', orderData);
-
-      if (response.status === 200 || response.status === 201) {
-        clearCart();
-        Alert.alert("Order Confirmed! 🚀", "Aapka order successfully place ho gaya hai.", [
-          { 
-            text: "Great!", 
-            onPress: () => navigation.reset({
-              index: 0,
-              routes: [{ name: 'Main', params: { screen: 'Home' } }],
-            }) 
-          }
-        ]);
-      }
-    } catch (error: any) {
-      console.error("Cart Order Error:", error.response?.data || error.message);
-      Alert.alert("Opps!", error.response?.data?.message || "Order nahi ho paya.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  } catch (error: any) {
+    Alert.alert("ओह!", error.response?.data?.message || "ऑर्डर प्लेस करने में समस्या आई।");
+  } finally {
+    setLoading(false);
+  }
+};
   // UI Components (Same as before)
   const StepIndicator = () => (
     <View style={styles.stepContainer}>
@@ -126,62 +125,90 @@ export default function CheckoutScreen() {
       <StepIndicator />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
-        {currentStep === 1 && (
-          <View>
-            <Text style={styles.sectionTitle}>Review Order</Text>
-            {cart.map((item) => (
-              <View key={item.productId} style={styles.itemRow}>
-                <Text style={styles.itemInfo}>{(item.product?.name || 'Product')} x {item.quantity}</Text>
-                <Text style={styles.itemPrice}>₹{Number(item.product?.price || 0) * item.quantity}</Text>
-              </View>
-            ))}
-            <View style={styles.divider} />
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => setCurrentStep(2)}>
-              <Text style={styles.btnText}>Proceed to Address</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+  {/* Step 1: Review Order */}
+  {currentStep === 1 && (
+    <View>
+      <Text style={styles.sectionTitle}>Review Order</Text>
+      {cart.map((item) => (
+        <View key={item.productId} style={styles.itemRow}>
+          <Text style={styles.itemInfo}>{(item.product?.name || 'Product')} x {item.quantity}</Text>
+          <Text style={styles.itemPrice}>₹{Number(item.product?.price || 0) * item.quantity}</Text>
+        </View>
+      ))}
+      <View style={styles.divider} />
+      <TouchableOpacity style={styles.primaryBtn} onPress={() => setCurrentStep(2)}>
+        <Text style={styles.btnText}>Proceed to Address</Text>
+      </TouchableOpacity>
+    </View>
+  )}
 
-        {currentStep === 2 && (
-          <View>
-            <Text style={styles.sectionTitle}>Delivery Details</Text>
-            <TextInput style={styles.input} placeholder="Full Name" value={fullName} onChangeText={setFullName} />
-            <TextInput style={styles.input} placeholder="Phone Number" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
-            <TextInput style={[styles.input, {height: 80}]} placeholder="Complete Address" multiline value={address} onChangeText={setAddress} />
-            <TextInput style={styles.input} placeholder="Nearby Landmark" value={landmark} onChangeText={setLandmark} />
-            
-            <View style={styles.row}>
-                <TouchableOpacity style={styles.outlineBtn} onPress={() => setCurrentStep(1)}>
-                    <Text style={styles.outlineText}>Back</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.primaryBtn, {flex: 2}]} onPress={() => setCurrentStep(3)}>
-                    <Text style={styles.btnText}>Continue</Text>
-                </TouchableOpacity>
-            </View>
-          </View>
-        )}
+  {/* Step 2: Delivery Details */}
+  {currentStep === 2 && (
+    <View>
+      <Text style={styles.sectionTitle}>Delivery Details</Text>
+      <TextInput style={styles.input} placeholder="Full Name" value={fullName} onChangeText={setFullName} />
+      <TextInput style={styles.input} placeholder="Phone Number" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+      <TextInput style={[styles.input, {height: 80}]} placeholder="Complete Address" multiline value={address} onChangeText={setAddress} />
+      <TextInput style={styles.input} placeholder="Nearby Landmark" value={landmark} onChangeText={setLandmark} />
+      
+      <View style={styles.row}>
+          <TouchableOpacity style={styles.outlineBtn} onPress={() => setCurrentStep(1)}>
+              <Text style={styles.outlineText}>Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.primaryBtn, {flex: 2}]} onPress={() => setCurrentStep(3)}>
+              <Text style={styles.btnText}>Continue</Text>
+          </TouchableOpacity>
+      </View>
+    </View>
+  )}
 
-        {currentStep === 3 && (
-          <View>
-            <Text style={styles.sectionTitle}>Payment Summary</Text>
-            <View style={styles.paymentCard}>
-                <Text style={styles.payName}>Cash on Delivery</Text>
-                <CheckCircle2 color="#2563eb" size={24} />
-            </View>
+  {/* Step 3: Payment Summary (बैनर को इसके अंदर होना चाहिए) */}
+  {currentStep === 3 && (
+    <View>
+      {/* ✅ FIX 1: बैनर को सही जगह और <Text> के अंदर सुरक्षित किया */}
+      {subtotal < freeLimit && (
+        <View style={styles.freeDeliveryBanner}>
+          <Text style={styles.freeDeliveryText}>
+            सिर्फ ₹{freeLimit - subtotal} का सामान और जोड़ें और {'\n'}
+            <Text style={{fontWeight: '900'}}>FREE DELIVERY</Text> पाएँ! 🚚
+          </Text>
+        </View>
+      )}
 
-            <View style={styles.summaryCard}>
-              <View style={styles.totalRow}><Text>Subtotal</Text><Text>₹{subtotal}</Text></View>
-              <View style={styles.totalRow}><Text>Delivery</Text><Text style={{color: '#10b981'}}>FREE</Text></View>
-              <View style={styles.divider} />
-              <View style={styles.totalRow}><Text style={styles.grandTotal}>Total</Text><Text style={styles.grandTotal}>₹{total}</Text></View>
-            </View>
+      <Text style={styles.sectionTitle}>Payment Summary</Text>
+      <View style={styles.paymentCard}>
+          <Text style={styles.payName}>Cash on Delivery</Text>
+          <CheckCircle2 color="#2563eb" size={24} />
+      </View>
 
-            <TouchableOpacity style={styles.placeOrderBtn} onPress={handlePlaceOrder} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Confirm Order • ₹{total}</Text>}
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
+      <View style={styles.summaryCard}>
+        {/* ✅ FIX 2: इन लाइनों के टेक्स्ट को <Text> टैग के अंदर किया */}
+        <View style={styles.totalRow}>
+          <Text style={styles.summaryLabel}>Subtotal</Text>
+          <Text style={styles.summaryValue}>₹{subtotal}</Text>
+        </View>
+        
+        <View style={styles.totalRow}>
+          <Text style={styles.summaryLabel}>Delivery Charge</Text>
+          <Text style={[styles.summaryValue, deliveryCharge === 0 && { color: '#10b981' }]}>
+            {deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}
+          </Text>
+        </View>
+
+        <View style={styles.divider} />
+        
+        <View style={styles.totalRow}>
+          <Text style={styles.grandTotal}>Total</Text>
+          <Text style={styles.grandTotal}>₹{total}</Text>
+        </View>
+      </View>
+
+      <TouchableOpacity style={styles.placeOrderBtn} onPress={handlePlaceOrder} disabled={loading}>
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Confirm Order • ₹{total}</Text>}
+      </TouchableOpacity>
+    </View>
+  )}
+</ScrollView>
     </View>
   );
 }
@@ -215,5 +242,45 @@ const styles = StyleSheet.create({
     payName: { fontSize: 16, fontWeight: 'bold', color: '#2563eb' },
     summaryCard: { backgroundColor: '#f8fafc', padding: 20, borderRadius: 20, marginTop: 20 },
     totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-    grandTotal: { fontSize: 18, fontWeight: '900' }
+    grandTotal: { fontSize: 18, fontWeight: '900' },
+    // styles के अंदर सबसे नीचे ये जोड़ें:
+  freeDeliveryBanner: {
+    backgroundColor: '#f0fdf4', // हल्का हरा (Success Green)
+    padding: 15,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  freeDeliveryText: {
+    color: '#166534',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  upsellContainer: {
+    backgroundColor: '#fff7ed', // हल्का ऑरेंज
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 15,
+    borderLeftWidth: 4,
+    borderLeftColor: '#fb923c',
+  },
+  upsellText: {
+    color: '#9a3412',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // styles के अंदर इन्हें भी जोड़ दें:
+  summaryLabel: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  summaryValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
 });

@@ -3,7 +3,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { ChevronRight } from 'lucide-react-native';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
 // width को एक नया नाम (alias) दे दें ताकि टकराव न हो
 
 
@@ -40,7 +40,24 @@ const { width } = Dimensions.get('window');
 
 const CategorySection: React.FC<CategorySectionProps> = ({ category, products, numColumns = 3 }) => {
   const navigation = useNavigation<any>();
+const handleSeeAll = async () => {
+    try {
+      const savedLocation = await AsyncStorage.getItem('userLocation');
+      const location = savedLocation ? JSON.parse(savedLocation) : null;
 
+      // 'सब देखें' पर क्लिक करने पर लोकेशन भी भेजें
+      navigation.navigate('CategoryDetails', { 
+        catId: category.id, 
+        catName: category.name,
+        // 👇 ये बैकएंड के लिए बहुत ज़रूरी हैं
+        pincode: location?.pincode,
+        lat: location?.latitude,
+        lng: location?.longitude
+      });
+    } catch (error) {
+      navigation.navigate('CategoryDetails', { catId: category.id, catName: category.name });
+    }
+  };
   // ✅ फ़िल्टर लॉजिक
   const categoryProducts = products
     .filter(p => String(p.categoryId) === String(category.id))
@@ -59,9 +76,7 @@ const CategorySection: React.FC<CategorySectionProps> = ({ category, products, n
           <Text style={{ fontSize: 22 }}>{category.icon || '📦'}</Text>
           <Text style={styles.sectionTitle}>{category.name}</Text>
         </View>
-        <TouchableOpacity 
-          onPress={() => navigation.navigate('CategoryDetails', { catId: category.id, catName: category.name })}
-        >
+      <TouchableOpacity onPress={handleSeeAll}>
           <Text style={styles.seeAllBtn}>सब देखें</Text>
         </TouchableOpacity>
       </View>
@@ -102,7 +117,7 @@ const CategorySection: React.FC<CategorySectionProps> = ({ category, products, n
             <TouchableOpacity 
               key={shop.id} 
               style={styles.shopCard} 
-              onPress={() => navigation.navigate('ShopDetails', { sellerId: shop.id })}
+              onPress={() => navigation.navigate('ShopDetails', { sellerId: shop.id,shopName: shop.businessName })}
             >
               <Text style={styles.shopName} numberOfLines={1}>{shop.businessName}</Text>
               <ChevronRight size={14} color="#2563eb" />

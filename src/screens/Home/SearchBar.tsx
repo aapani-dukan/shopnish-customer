@@ -2,21 +2,30 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Search } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useLocation } from '../../context/LocationContext'; // 👈 अपना लोकेशन हुक इम्पोर्ट करें
 
 const SearchBar: React.FC = () => {
   const navigation = useNavigation<any>();
+  const { currentLocation } = useLocation(); // 👈 लोकेशन डेटा निकालें
+
+  const handleSearchPress = () => {
+    navigation.navigate('Search', {
+      // ✅ सर्च स्क्रीन को ये पैरामीटर्स भेजना "Compulsory" है
+      pincode: currentLocation?.pincode,
+      lat: currentLocation?.latitude,
+      lng: currentLocation?.longitude,
+    });
+  };
 
   return (
-    /* 1. Main Container: यह सफ़ेद बैकग्राउंड देगा जब बार टॉप पर चिपकेगा */
     <View style={styles.stickyContainer}>
       <TouchableOpacity
         style={styles.searchBar}
-        onPress={() => navigation.navigate('Search')}
-        activeOpacity={0.9} // High-class feel के लिए कम फीडबैक
+        onPress={handleSearchPress} // 👈 यहाँ नया हैंडलर लगाएं
+        activeOpacity={0.9}
       >
         <Search size={20} color="#64748b" strokeWidth={2.5} />
         <Text style={styles.searchText}>Search products or shops...</Text>
-        
         {/* 2. एक छोटा सा विजुअल 'Mic' या 'Filter' का हिंट भी दे सकते हैं */}
         <View style={styles.divider} />
         <Text style={styles.searchHint}>Find</Text>

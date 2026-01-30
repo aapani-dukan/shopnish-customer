@@ -37,7 +37,7 @@ function MainTabs() {
           let iconName: any;
           if (route.name === 'Home') iconName = 'home';
           else if (route.name === 'Search') iconName = 'search';
-          else if (route.name === 'My Orders') iconName = 'clipboard'; // Feather me package nahi hai
+          else if (route.name === 'My Orders') iconName = 'list'; // Feather me package nahi hai
           else if (route.name === 'Profile') iconName = 'user';
           return <Feather name={iconName} size={size} color={color} />;
         },

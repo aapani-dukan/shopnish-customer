@@ -5,6 +5,8 @@ import {
   ActivityIndicator,
   StatusBar,
   StyleSheet,
+  Linking,
+  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from "@tanstack/react-query";
@@ -67,6 +69,40 @@ export default function HomeScreen() {
     enabled: !!currentLocation?.pincode,
   });
 
+  const handleBannerPress = (bannerItem: any) => {
+  if (!bannerItem) return;
+
+  // 1. Debugging के लिए (इसे बाद में हटा सकते हैं)
+  console.log("🎯 Banner Clicked Data:", bannerItem);
+
+  // 2. डेटा को सही जगह से निकालें (Directly from bannerItem)
+  const productId = bannerItem.productId;
+  const categoryId = bannerItem.categoryId;
+  const deeplink = bannerItem.deeplink;
+
+  // 3. Navigation Logic
+  if (productId) {
+    // पक्का करें कि आपके Navigator में नाम 'ProductDetails' ही है
+    navigation.navigate('ProductDetails', { productId: productId });
+  } 
+  // handleBannerPress के अंदर categoryId वाला हिस्सा:
+else if (categoryId) {
+  navigation.navigate('CategoryDetails', { // 'CategoryProducts' की जगह 'CategoryDetails' करें अगर वही नाम है
+    catId: categoryId, 
+    catName: bannerItem.title || 'Category',
+    pincode: currentLocation?.pincode, // यहाँ भी लोकेशन जोड़ें
+    lat: currentLocation?.latitude,
+    lng: currentLocation?.longitude
+  });
+  }
+  else if (deeplink && deeplink.trim() !== "") {
+    Linking.openURL(deeplink).catch(err => 
+      console.error("❌ Link open karne mein error:", err)
+    );
+  } else {
+    console.log("ℹ️ Is banner par koi action set nahi hai.");
+  }
+};
   // --- BANNERS ---
   const banners = useMemo(() => {
     const filtered = layoutSections.filter(s => ["main_banner", "flash_sale", "category_special"].includes(s.sectionType));
@@ -89,9 +125,22 @@ export default function HomeScreen() {
     }
   }, [layoutSections]);
 
-  const handleSelectCategory = (id: string | number) => {
-    navigation.navigate("CategoryDetails", { catId: id });
-  };
+  // HomeScreen.tsx के अंदर
+
+const handleSelectCategory = (id: string | number) => {
+  // 1. सही कैटेगरी ऑब्जेक्ट ढूँढें (नाम के लिए)
+  const selectedCat = categories.find(c => String(c.id) === String(id));
+
+  // 2. लोकेशन के साथ नेविगेट करें
+  navigation.navigate("CategoryDetails", { 
+    catId: id, 
+    catName: selectedCat?.name || "Category",
+    // 👇 ये वो जादुई लाइन्स हैं जो 400 Error को ख़त्म करेंगी
+    pincode: currentLocation?.pincode,
+    lat: currentLocation?.latitude,
+    lng: currentLocation?.longitude
+  });
+};
 
   // --- FLATLIST SECTIONS ---
   // हम Sticky HeaderIndices का सही उपयोग करने के लिए Sections बनाएंगे
@@ -186,7 +235,10 @@ categories.forEach((cat) => {
           />
           {/* ✅ अब यहाँ सिर्फ 'Top Banners' दिखेंगे, कोई फालतू लूप नहीं */}
           {item.banners && item.banners.length > 0 ? (
-            <BannerCarousel banners={item.banners} />
+            <BannerCarousel banners={item.banners} 
+           onPress={(banner) => handleBannerPress(banner)} 
+
+            />
           ) : (
             <View style={styles.bannerPlaceholder} />
           )}
@@ -194,17 +246,32 @@ categories.forEach((cat) => {
       );
 
     case 'BANNER_AD':
-      // ✅ ये केस 'Flash Sale' और 'Category Special' बैनर्स को रेंडर करेगा
-      return (
-        <View style={{ marginVertical: 10 }}>
-          <BannerCarousel banners={item.data || []} />
-        </View>
-      );
+  return (
+    <View style={{ marginVertical: 10 }}>
+      <BannerCarousel 
+        banners={item.data || []}
+        // ✅ यहाँ बदलाव करें: 'clickedItem' वो डेटा है जो BannerCarousel से आ रहा है
+        onPress={(clickedItem) => handleBannerPress(clickedItem)} 
+      />
+    </View>
+  );
 
     case 'STICKY_CONTROLS':
       return (
         <View style={styles.stickyWrapper}>
-          <SearchBar />
+          <TouchableOpacity 
+        activeOpacity={1} 
+        onPress={() => navigation.navigate('Search', {
+          // सर्च में भी लोकेशन भेजना बहुत ज़रूरी है
+          pincode: currentLocation?.pincode,
+          lat: currentLocation?.latitude,
+          lng: currentLocation?.longitude
+        })}
+      >
+        <View pointerEvents="none">
+           <SearchBar />
+        </View>
+      </TouchableOpacity>
           <CategoryScroller
             categories={categories}
             selectedCategoryId={selectedCategoryId}

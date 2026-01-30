@@ -5,30 +5,33 @@ import { ChevronLeft, Star, MapPin, Share2 } from 'lucide-react-native';
 import api from '../../services/api';
 
 const { width } = Dimensions.get('window');
-
 export default function ShopDetailsScreen({ route, navigation }: any) {
   const { sellerId, shopName } = route.params;
+  
+  // ✅ 1. सिलेक्टेड कैटेगरी की स्टेट बनाएँ
+  const [selectedCategory, setSelectedCategory] = React.useState('All');
 
-  // 1. Fetch Products
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products', 'shop', sellerId],
     queryFn: async () => {
+      // पक्का करें कि बैकएंड sellerId नाम का पैरामीटर स्वीकार करता है
       const res = await api.get('/api/products', { params: { sellerId } });
       return res.data.products || [];
     },
   });
 
-  // 2. Derive Categories from products (for filter tabs)
- const shopCategories = useMemo<string[]>(() => {
-  if (!products || products.length === 0) return ['All'];
+  // ✅ 2. कैटेगरी फ़िल्टर लॉजिक
+  const filteredProducts = useMemo(() => {
+    if (selectedCategory === 'All') return products;
+    return products.filter((p: any) => p.categoryName === selectedCategory);
+  }, [products, selectedCategory]);
 
-  const cats = products.map((p: any) => String(p.categoryName || 'General'));
-  
-  // Set के बाद .filter(Boolean) और explicit casting करें
-  const uniqueCats = Array.from(new Set(cats)) as string[]; 
-  
-  return ['All', ...uniqueCats];
-}, [products]);
+  const shopCategories = useMemo<string[]>(() => {
+    if (!products || products.length === 0) return ['All'];
+    const cats = products.map((p: any) => String(p.categoryName || 'General'));
+    const uniqueCats = Array.from(new Set(cats)) as string[]; 
+    return ['All', ...uniqueCats];
+  }, [products]);
 
   const ListHeader = () => (
     <View style={styles.shopHeader}>
@@ -70,14 +73,20 @@ export default function ShopDetailsScreen({ route, navigation }: any) {
       <View style={styles.divider} />
 
       {/* Category Tabs (Can be made sticky) */}
-      <FlatList
+    <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
         data={shopCategories}
         contentContainerStyle={styles.tabContainer}
         renderItem={({ item }) => (
-          <TouchableOpacity style={[styles.tab, item === 'All' && styles.activeTab]}>
-            <Text style={[styles.tabText, item === 'All' && styles.activeTabText]}>{item}</Text>
+          <TouchableOpacity 
+            // ✅ स्टेट अपडेट करने के लिए onPress जोड़ें
+            onPress={() => setSelectedCategory(item)}
+            style={[styles.tab, item === selectedCategory && styles.activeTab]}
+          >
+            <Text style={[styles.tabText, item === selectedCategory && styles.activeTabText]}>
+              {item}
+            </Text>
           </TouchableOpacity>
         )}
       />
@@ -100,7 +109,7 @@ export default function ShopDetailsScreen({ route, navigation }: any) {
       </View>
 
       <FlatList
-        data={products}
+        data={filteredProducts}
         numColumns={2}
         ListHeaderComponent={ListHeader}
         keyExtractor={(item) => String(item.id || item._id)}

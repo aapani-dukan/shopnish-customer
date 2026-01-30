@@ -6,16 +6,26 @@ import api from '../services/api';
 const { width } = Dimensions.get('window');
 
 export default function CategoryDetailsScreen({ route, navigation }: any) {
-  const { catId, catName } = route.params;
+  const { catId, catName,pincode, lat, lng } = route.params;
 
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ['products', 'category', catId],
+  const { data: products = [], isLoading, error } = useQuery({
+    queryKey: ['products', 'category', catId, pincode, lat, lng],
     queryFn: async () => {
-      const res = await api.get('/api/products', { params: { categoryId: catId } });
+      // params के अंदर डिफ़ॉल्ट वैल्यूज़ (Fallback)
+const res = await api.get('/api/products', { 
+  params: { 
+    categoryId: catId, 
+    pincode: pincode || '', 
+    lat: lat || 0, 
+    lng: lng || 0 
+  } 
+});
       return res.data.products || [];
     },
   });
-
+if (error) {
+    console.error("❌ API Error in Category Screen:", error);
+  }
   if (isLoading) {
     return (
       <View style={styles.center}>
