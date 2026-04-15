@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   View, Text, Image, ScrollView, StyleSheet, 
-  TouchableOpacity, ActivityIndicator, Dimensions, Alert, StatusBar, Platform 
+  TouchableOpacity, ActivityIndicator, Dimensions, Alert, StatusBar, Platform,FlatList 
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { ShoppingCart, Minus, Plus, ChevronLeft, Star, Share2, ShieldCheck, Clock } from 'lucide-react-native';
@@ -18,7 +18,7 @@ export default function ProductDetailsScreen() {
   const { productId } = route.params as { productId: number };
   const { refreshCart } = useCart();
   const [quantity, setQuantity] = useState(1);
-
+const [activeIndex, setActiveIndex] = React.useState(0);
   const { data: product, isLoading, isError } = useQuery<any>({
     queryKey: [`/api/products/${productId}`],
   });
@@ -55,16 +55,50 @@ export default function ProductDetailsScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-        {/* 2. Full Width Premium Image */}
-        <View style={styles.imageWrapper}>
-          <Image source={{ uri: product.image }} style={styles.mainImage} />
-          {product.discount && (
-            <View style={styles.discountBadge}>
-              <Text style={styles.discountText}>{product.discount}% OFF</Text>
+  {/* 2. Full Width Premium Image Slider (Updated for Multiple Images) */}
+  <View style={styles.imageWrapper}>
+    {product.images && product.images.length > 0 ? (
+      <View>
+        <FlatList
+          data={product.images} // डेटाबेस का 'images' कॉलम
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={(e) => {
+            const index = Math.round(e.nativeEvent.contentOffset.x / width);
+            setActiveIndex(index); // सक्रिय फोटो का इंडेक्स अपडेट करें
+          }}
+          keyExtractor={(_, index) => index.toString()}
+          renderItem={({ item }) => (
+            <View style={{ width: width, height: height * 0.45, backgroundColor: '#fff' }}>
+              <Image 
+                source={{ uri: item }} 
+                style={{ width: '100%', height: '100%', resizeMode: 'contain' }} 
+              />
             </View>
           )}
+        />
+        {/* Pagination Dots */}
+        <View style={styles.dotContainer}>
+           {product.images.map((_: string, i: number)=> (
+            <View 
+              key={i} 
+              style={[styles.dot, { backgroundColor: activeIndex === i ? '#2563eb' : '#cbd5e1' }]} 
+            />
+          ))}
         </View>
-        
+      </View>
+    ) : (
+      // Fallback: अगर images एरे खाली है तो सिंगल इमेज दिखाएं
+      <Image source={{ uri: product.image }} style={styles.mainImage} />
+    )}
+
+    {product.discount && (
+      <View style={styles.discountBadge}>
+        <Text style={styles.discountText}>{product.discount}% OFF</Text>
+      </View>
+    )}
+  </View>
         <View style={styles.contentCard}>
           <View style={styles.handle} />
           
@@ -169,8 +203,7 @@ const styles = StyleSheet.create({
     borderRadius: 14, justifyContent: 'center', alignItems: 'center',
     shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 4
   },
-  imageWrapper: { width: width, height: height * 0.45, position: 'relative' },
-  mainImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  
   discountBadge: { position: 'absolute', bottom: 60, left: 20, backgroundColor: '#f43f5e', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   discountText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   
@@ -226,5 +259,27 @@ const styles = StyleSheet.create({
   buttonGroup: { flexDirection: 'row', gap: 10 },
   addBtn: { width: 54, height: 54, borderRadius: 16, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: '#dbeafe' },
   buyBtn: { paddingHorizontal: 28, height: 54, borderRadius: 16, backgroundColor: '#2563eb', justifyContent: 'center', alignItems: 'center' },
-  buyText: { color: '#fff', fontSize: 16, fontWeight: '800' }
+  buyText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  imageWrapper: { 
+    width: width, 
+    height: height * 0.45, 
+    position: 'relative',
+    backgroundColor: '#fff' 
+  },
+  mainImage: { width: '100%', height: '100%', resizeMode: 'contain' },
+  
+  // Dots Styling
+  dotContainer: {
+    flexDirection: 'row',
+    position: 'absolute',
+    bottom: 45, // कंटेंट कार्ड से ठीक ऊपर
+    alignSelf: 'center',
+    gap: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  }
+
 });

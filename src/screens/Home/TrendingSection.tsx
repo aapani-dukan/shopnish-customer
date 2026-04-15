@@ -66,7 +66,7 @@ const TrendingSection: React.FC<TrendingSectionProps> = ({ products, numColumns 
 
             {/* Content Area */}
             <View style={styles.info}>
-              <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
               <Text style={styles.seller} numberOfLines={1}>
                 {item.seller?.businessName || 'Verified Shop'}
               </Text>
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 8, fontWeight: '900', color: '#0f172a' },
   
   info: { padding: 8 },
-  name: { fontSize: 12, fontWeight: '700', color: '#1e293b' },
+  name: { fontSize: 12, fontWeight: '700', color: '#1e293b',lineHeight:16,height:32,marginBottom: 2 },
   seller: { fontSize: 10, color: '#94a3b8', marginTop: 1, fontWeight: '500' },
   priceRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4, gap: 1 },
   currency: { fontSize: 10, fontWeight: '900', color: '#2563eb' },
