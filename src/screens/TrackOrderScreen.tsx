@@ -62,7 +62,7 @@ export default function TrackOrderScreen({ route, navigation }: any) {
       // ✅ Modular way to get token (No warning)
       const token = await getIdToken(fbUser);
 
-      const res = await fetch(`https://shopnish-seprate.onrender.com/api/orders/${orderId}/tracking`, {
+      const res = await fetch(`https://api.shopnish.com/api/orders/${orderId}/tracking`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -89,7 +89,7 @@ export default function TrackOrderScreen({ route, navigation }: any) {
       
       const token = await getIdToken(fbUser);
 
-      socket.current = io("https://shopnish-seprate.onrender.com", { 
+      socket.current = io("https://api.shopnish.com", { 
         transports: ['websocket'],
         auth: { token: `Bearer ${token}` }
       });

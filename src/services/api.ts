@@ -5,7 +5,7 @@ import { getAuth, getIdToken } from '@react-native-firebase/auth';
 const auth = getAuth();
 
 const api = axios.create({
-  baseURL: 'https://shopnish-seprate.onrender.com', 
+  baseURL: 'https://api.shopnish.com', 
   timeout: 15000, 
 });
 
