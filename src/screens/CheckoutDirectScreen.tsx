@@ -52,7 +52,7 @@ export default function CheckoutDirectScreen() {
     try {
       setLoading(true);
       const orderData = {
-        newDeliveryAddress: {
+       newDeliveryAddress: JSON.stringify({
           fullName,
           phoneNumber: phone,
           address,
@@ -61,7 +61,7 @@ export default function CheckoutDirectScreen() {
           pincode: currentLocation?.pincode || "323001", // ✅ डायनामिक पिनकोड
           latitude: Number(currentLocation?.latitude || 0),
           longitude: Number(currentLocation?.longitude || 0),
-        },
+        }),
         paymentMethod: "cod",
         deliveryInstructions: instructions,
         item: {

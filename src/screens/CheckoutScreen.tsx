@@ -66,7 +66,7 @@ const total = subtotal + deliveryCharge;
 
     const orderData = {
       customerId: user?.id,
-      deliveryAddress: { 
+     newDeliveryAddress: JSON.stringify({
         fullName,
         phoneNumber: phone, 
         address,
@@ -74,7 +74,7 @@ const total = subtotal + deliveryCharge;
         pincode: pincode,
         latitude: currentLocation?.latitude,
         longitude: currentLocation?.longitude,
-      },
+      }),
       paymentMethod: "cod",
       deliveryInstructions: instructions,
       // 💸 Amounts को हमेशा Number() में कन्वर्ट करके भेजें (Backend Safety)
