@@ -15,11 +15,14 @@ const auth = getAuth();
 export default function TrackOrderScreen({ route, navigation }: any) {
   const orderId = route?.params?.orderId;
   const [trackingData, setTrackingData] = useState<any>(null);
-  const [liveLocations, setLiveLocations] = useState<Map<number, any>>(new Map());
+  
+  // 🎯 FIX 1: Map की जगह सिंपल ऑब्जेक्ट स्टेट ताकि हर सेकंड री-रेंडर मक्खन जैसा हो
+  const [liveRiderLocation, setLiveRiderLocation] = useState<{lat: number, lng: number, heading: number} | null>(null);
   const [liveETA, setLiveETA] = useState<string | null>(null);
+  
   const socket = useRef<any>(null);
-  const mapRef = useRef<MapView>(null); // ✅ Auto-zoom ke liye
-
+  const mapRef = useRef<MapView>(null);
+const hasFitMap = useRef<boolean>(false);
   const getDisplayETA = () => {
     if (trackingData?.estimatedDeliveryTime) {
       return new Date(trackingData.estimatedDeliveryTime).toLocaleTimeString([], {
@@ -29,7 +32,6 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     }
     return liveETA || "Arriving Soon";
   };
-
   const getStatusText = (status: string = "") => {
     const s = status.toLowerCase();
     switch (s) {
@@ -81,7 +83,7 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     }
   };
 
-  // ✅ 2. Socket Initialization
+ // 🎯 2. Socket Initialization (Zomato-style Listener Setup)
   useEffect(() => {
     const initSocket = async () => {
       const fbUser = auth.currentUser;
@@ -99,12 +101,16 @@ export default function TrackOrderScreen({ route, navigation }: any) {
         socket.current.emit("join-order-room", { orderId: Number(orderId) });
       });
 
-      socket.current.on("order:delivery_location", (data: any) => {
-        setLiveLocations((prev) => {
-          const newMap = new Map(prev);
-          newMap.set(data.batchId, { lat: data.lat, lng: data.lng });
-          return newMap;
-        });
+      // 🚨 FIX 2: डिलीवरी बॉय के 'delivery:location-update' वाले लाइव इवेंट को यहाँ हुक किया
+      socket.current.on("delivery:location-update", (data: any) => {
+        console.log("🏍️ Received Live Rider Movement:", data);
+        if (data.latitude && data.longitude) {
+          setLiveRiderLocation({
+            lat: data.latitude,
+            lng: data.longitude,
+            heading: data.heading || 0
+          });
+        }
       });
 
       socket.current.on('order:status_updated', fetchTracking);
@@ -118,16 +124,16 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     };
   }, [orderId]);
 
-  // ✅ 3. Map Coordinates Logic
+ // 🎯 3. Map Coordinates Sync
   const mapNodes = useMemo(() => {
-    if (!trackingData || !trackingData.deliveryBatchesSummary?.length) return null;
+    if (!trackingData) return null;
 
-    const batch = trackingData.deliveryBatchesSummary[0];
-    const live = liveLocations.get(batch.batchId);
-    const db = batch.deliveryBoy;
+    const batch = trackingData.deliveryBatchesSummary?.[0];
+    const db = batch?.deliveryBoy;
 
-    const rLat = parseFloat(String(live?.lat || db?.currentLocation?.lat || 0));
-    const rLng = parseFloat(String(live?.lng || db?.currentLocation?.lng || 0));
+    // अगर सॉकेट से लाइव डेटा आ गया है तो वो लें, नहीं तो डेटाबेस का करंट लोकेशन उठाएं
+    const rLat = parseFloat(String(liveRiderLocation?.lat || db?.currentLocation?.lat || 0));
+    const rLng = parseFloat(String(liveRiderLocation?.lng || db?.currentLocation?.lng || 0));
     
     const cLat = parseFloat(String(trackingData.customerDeliveryAddress?.latitude || 0));
     const cLng = parseFloat(String(trackingData.customerDeliveryAddress?.longitude || 0));
@@ -135,11 +141,11 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     const riderPos = { latitude: rLat, longitude: rLng };
     const customerPos = { latitude: cLat, longitude: cLng };
 
-    const bStatus = batch.batchStatus.toLowerCase();
+    const bStatus = batch?.batchStatus?.toLowerCase() || "";
     const isNotPickedUp = ["placed", "confirmed", "accepted", "preparing", "ready_for_pickup"].includes(bStatus);
     
     let destinationPos = customerPos;
-    if (isNotPickedUp && batch.storeLocations?.length > 0) {
+    if (isNotPickedUp && batch?.storeLocations?.length > 0) {
       destinationPos = {
         latitude: parseFloat(String(batch.storeLocations[0].latitude)),
         longitude: parseFloat(String(batch.storeLocations[0].longitude))
@@ -147,17 +153,16 @@ export default function TrackOrderScreen({ route, navigation }: any) {
     }
 
     return { riderPos, destinationPos };
-  }, [trackingData, liveLocations]);
+  }, [trackingData, liveRiderLocation]); // 👈 Depend on raw object triggers re-renders instantly
 
   if (!trackingData) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#7c3aed" />
+        <ActivityIndicator size="large" color="#7c3aed"/>
         <Text style={styles.loaderText}>SYNCING LIVE STATUS...</Text>
       </View>
     );
   }
-
   const currentStatus = trackingData.overallDeliveryStatus || trackingData.status;
 
   return (
@@ -185,20 +190,29 @@ export default function TrackOrderScreen({ route, navigation }: any) {
                 optimizeWaypoints={true}
                 mode="DRIVING"
                 precision="high"
-                onReady={result => {
+               onReady={result => {
                   console.log("✅ Route Found:", result.distance, "km");
                   setLiveETA(`${Math.ceil(result.duration)} mins`);
-                  // ✅ Auto-fit markers
-                  mapRef.current?.fitToCoordinates([mapNodes.riderPos, mapNodes.destinationPos], {
-                    edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-                    animated: true,
-                  });
+                  
+                  // 🎯 FIX: Auto-fit sirf pehli baar hoga taaki map jhatke na mare
+                  if (!hasFitMap.current) {
+                    mapRef.current?.fitToCoordinates([mapNodes.riderPos, mapNodes.destinationPos], {
+                      edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+                      animated: true,
+                    });
+                    hasFitMap.current = true;
+                  }
                 }}
                 onError={(err) => console.log("❌ Directions Error:", err)}
               />
               
-              {/* Rider Marker */}
-              <Marker coordinate={mapNodes.riderPos} anchor={{x:0.5, y:0.5}} flat={true}>
+              {/* Rider Marker (🏍️ Added Rotation & Flat parameters for direction angle) */}
+              <Marker 
+                coordinate={mapNodes.riderPos} 
+                anchor={{x:0.5, y:0.5}} 
+                flat={true}
+                rotation={liveRiderLocation?.heading || 0} // 👈 Bike ghumte hi icon bhi ghumega!
+              >
                 <View style={[styles.markerBase, {backgroundColor: '#7c3aed'}]}>
                   <Truck color="#fff" size={16} />
                 </View>
