@@ -43,7 +43,7 @@ export default function CheckoutDirectScreen() {
   const deliveryCharge = subtotal >= freeLimit ? 0 : baseCharge;
   const total = subtotal + deliveryCharge;
 
-  const handlePlaceOrder = async () => {
+ const handlePlaceOrder = async () => {
     if (!fullName || !phone || !address) {
       Alert.alert("अधूरा पता", "कृपया अपना नाम, नंबर और पूरा पता दर्ज करें।");
       return;
@@ -52,16 +52,17 @@ export default function CheckoutDirectScreen() {
     try {
       setLoading(true);
       const orderData = {
-       newDeliveryAddress: JSON.stringify({
-          fullName,
+        // 🎯 FIX: JSON.stringify हटाया और कीज़ को बैकएंड के स्ट्रक्चर से मैच किया
+        newDeliveryAddress: {
+          fullName: fullName,
           phoneNumber: phone,
-          address,
-          city: currentLocation?.city || "Bundi", // ✅ डायनामिक सिटी
+          addressLine1: address, // 👈 'address' को 'addressLine1' किया
+          city: currentLocation?.city || "Bundi", 
           state: "Rajasthan",
-          pincode: currentLocation?.pincode || "323001", // ✅ डायनामिक पिनकोड
+          postalCode: currentLocation?.pincode || "323001", // 👈 'pincode' को 'postalCode' किया
           latitude: Number(currentLocation?.latitude || 0),
           longitude: Number(currentLocation?.longitude || 0),
-        }),
+        },
         paymentMethod: "cod",
         deliveryInstructions: instructions,
         item: {
