@@ -68,20 +68,37 @@ export default function SearchScreen({ route, navigation }: any) {
           data={products}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={{ padding: 20 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={styles.resultItem}
-              onPress={() => navigation.navigate('ProductDetails', { productId: item.id })}
-            >
-              <Image source={{ uri: item.image }} style={styles.resultImage} />
-              <View style={styles.resultInfo}>
-                <Text style={styles.resultName}>{item.name}</Text>
-                <Text style={styles.resultSeller}>{item.seller?.businessName}</Text>
-                <Text style={styles.resultPrice}>₹{item.price}</Text>
-              </View>
-              <Feather name="arrow-up-right" size={20} color="#CBD5E1" />
-            </TouchableOpacity>
-          )}
+       // 🎯 फिक्स: सर्च रिजल्ट्स में हर प्रोडक्ट के वैरिएंट्स में से न्यूनतम बेस प्राइस ढूंढना भाई!
+          renderItem={({ item }) => {
+            const variantsList = item.variants || [];
+            
+            // सबसे कम कीमत वाला वैरिएंट ढूंढो भाई ताकि सही शुरुआती रेट दिखे
+            const basePrice = variantsList.length > 0 
+              ? Math.min(...variantsList.map((v: any) => Number(v.price || 0)))
+              : Number(item.price || 0);
+
+            // चेक करो कि क्या एक से ज्यादा वैरिएंट्स मौजूद हैं भाई
+            const hasMultipleVariants = variantsList.length > 1;
+
+            return (
+              <TouchableOpacity 
+                style={styles.resultItem}
+                onPress={() => navigation.navigate('ProductDetails', { productId: item.id })}
+              >
+                <Image source={{ uri: item.image }} style={styles.resultImage} />
+                <View style={styles.resultInfo}>
+                  <Text style={styles.resultName}>{item.name}</Text>
+                  <Text style={styles.resultSeller}>{item.seller?.businessName || "Verified Shop"}</Text>
+                  
+                  {/* 🎯 फिक्स: अगर मल्टीपल वैरिएंट्स हैं तो स्टार्टिंग फ्रॉम चमकाओ भाई */}
+                  <Text style={styles.resultPrice}>
+                    {hasMultipleVariants ? 'Starting from ' : ''}₹{basePrice}
+                  </Text>
+                </View>
+                <Feather name="arrow-up-right" size={20} color="#CBD5E1" />
+              </TouchableOpacity>
+            );
+          }}
           ListEmptyComponent={!isLoading ? (
             <Text style={styles.noResultText}>आपके एरिया में कोई मैच नहीं मिला।</Text>
           ) : null}

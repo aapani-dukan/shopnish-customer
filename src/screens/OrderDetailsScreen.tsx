@@ -51,6 +51,7 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
         </View>
 
         {/* 🟢 Web Logic: Delivery Batches (Multi-Seller support) */}
+      {/* 🎯 फिक्स: शिपमेंट बैच के अंदर खरीदे गए आइटम्स और उनके विशिष्ट वैरिएंट साइज को रेंडर करना भाई! */}
         <Text style={styles.sectionTitle}>Shipments & Sellers</Text>
         {order?.deliveryBatchesSummary?.map((batch: any, index: number) => (
           <View key={index} style={styles.batchContainer}>
@@ -60,29 +61,57 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
                 <Text style={styles.batchIdText}>Shipment #{batch.batchId}</Text>
               </View>
               <Text style={[styles.batchStatusText, { color: getStatusColor(batch.batchStatus) }]}>
-                {batch.batchStatus.replace(/_/g, ' ')}
+                {batch.batchStatus?.replace(/_/g, ' ')?.toUpperCase()}
               </Text>
             </View>
 
             {/* Sub-orders in this batch */}
-            {batch.subOrders.map((so: any) => (
-              <View key={so.subOrderId} style={styles.sellerRow}>
-                <View style={styles.sellerInfo}>
-                  <Store size={18} color="#64748b" />
-                  <View style={{ marginLeft: 10 }}>
-                    <Text style={styles.sellerName}>{so.sellerName}</Text>
-                    <Text style={styles.subOrderId}>Sub-Order: #{so.subOrderId}</Text>
+            {batch.subOrders?.map((so: any) => (
+              <View key={so.subOrderId} style={{ borderBottomWidth: so.items?.length ? 1 : 0, borderBottomColor: '#f1f5f9', paddingBottom: 10 }}>
+                <View style={[styles.sellerRow, { borderBottomWidth: 0, marginBottom: 5 }]}>
+                  <View style={styles.sellerInfo}>
+                    <Store size={18} color="#64748b" />
+                    <View style={{ marginLeft: 10 }}>
+                      <Text style={styles.sellerName}>{so.sellerName}</Text>
+                      <Text style={styles.subOrderId}>Sub-Order: #{so.subOrderId}</Text>
+                    </View>
                   </View>
+                  <CheckCircle2 size={18} color="#10b981" />
                 </View>
-                <CheckCircle2 size={18} color="#10b981" />
+
+                {/* 🎯 जादुई फिक्स: इस सब-ऑर्डर के अंदर के सभी प्रोडक्ट्स और वैरिएंट्स की लिस्ट भाई */}
+                {so.items && so.items.length > 0 && (
+                  <View style={{ paddingLeft: 28, marginTop: 5, gap: 6 }}>
+                    {so.items.map((item: any, idx: number) => {
+                      // वैरिएंट का साइज/यूनिट निकालने का सुरक्षित तरीका भाई
+                      const itemSize = item.variantName || item.variantTitle || item.quantityValue ? `${item.quantityValue} ${item.unit || ''}` : null;
+                      
+                      return (
+                        <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <View style={{ flex: 1, marginRight: 10 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: '#1e293b' }}>
+                              {item.productName || item.name} <Text style={{ color: '#64748b', fontSize: 12 }}>x{item.quantity}</Text>
+                            </Text>
+                            {itemSize && (
+                              <Text style={{ fontSize: 11, color: '#7c3aed', fontWeight: '700', marginTop: 1 }}>
+                                Size: {itemSize}
+                              </Text>
+                            )}
+                          </View>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#1e293b' }}>₹{item.itemTotal || item.totalPrice}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             ))}
 
             {/* Rider Info if assigned */}
             {batch.deliveryBoy && (
-              <View style={styles.riderBox}>
+              <View style={[styles.riderBox, { marginTop: 12 }]}>
                 <View style={styles.riderDetails}>
-                  <View style={styles.riderAvatar}><Text style={styles.avatarText}>{batch.deliveryBoy.name[0]}</Text></View>
+                  <View style={styles.riderAvatar}><Text style={styles.avatarText}>{batch.deliveryBoy.name ? batch.deliveryBoy.name[0] : 'R'}</Text></View>
                   <View style={{ marginLeft: 12 }}>
                     <Text style={styles.riderName}>{batch.deliveryBoy.name}</Text>
                     <Text style={styles.riderSub}>Delivery Partner</Text>
@@ -97,8 +126,7 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
               </View>
             )}
           </View>
-        ))}
-
+        ))}  
         {/* Payment & Address */}
         <Text style={styles.sectionTitle}>Delivery & Payment</Text>
         <View style={styles.infoCard}>

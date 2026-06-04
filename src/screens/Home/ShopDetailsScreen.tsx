@@ -108,6 +108,7 @@ export default function ShopDetailsScreen({ route, navigation }: any) {
         </TouchableOpacity>
       </View>
 
+    {/* ✅ ऊपर वाले </View> के ठीक नीचे इस मुख्य लिस्ट वाले ब्लॉक को पेस्ट करें भाई */}
       <FlatList
         data={filteredProducts}
         numColumns={2}
@@ -115,24 +116,42 @@ export default function ShopDetailsScreen({ route, navigation }: any) {
         keyExtractor={(item) => String(item.id || item._id)}
         showsVerticalScrollIndicator={false}
         columnWrapperStyle={styles.columnWrapper}
-        renderItem={({ item }) => (
-          <TouchableOpacity 
-            activeOpacity={0.9}
-            style={styles.card}
-            onPress={() => navigation.navigate('ProductDetails', { productId: item.id || item._id })}
-          >
-            <View style={styles.imageContainer}>
-              <Image source={{ uri: item.image }} style={styles.img} />
-            </View>
-            <View style={styles.cardInfo}>
-              <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-              <View style={styles.priceRow}>
-                 <Text style={styles.priceSymbol}>₹</Text>
-                 <Text style={styles.priceValue}>{item.price}</Text>
+        renderItem={({ item }) => {
+          // 🎯 फिक्स: दुकान के प्रोडक्ट्स की ग्रिड में वैरिएंट्स से न्यूनतम बेस प्राइस ढूंढना भाई!
+          const variantsList = item.variants || [];
+          
+          // सबसे कम कीमत वाला वैरिएंट ढूंढो भाई ताकि सही शुरुआती रेट दिखे
+          const basePrice = variantsList.length > 0 
+            ? Math.min(...variantsList.map((v: any) => Number(v.price || 0)))
+            : Number(item.price || 0);
+
+          // चेक करो कि क्या एक से ज़्यादा वजन/साइज उपलब्ध हैं भाई
+          const hasMultipleVariants = variantsList.length > 1;
+
+          return (
+            <TouchableOpacity 
+              activeOpacity={0.9}
+              style={styles.card}
+              onPress={() => navigation.navigate('ProductDetails', { productId: item.id || item._id })}
+            >
+              <View style={styles.imageContainer}>
+                <Image source={{ uri: item.image }} style={styles.img} />
               </View>
-            </View>
-          </TouchableOpacity>
-        )}
+              <View style={styles.cardInfo}>
+                <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+                
+                {/* 🎯 फिक्स: अगर मल्टीपल वैरिएंट्स हैं तो 'From' लेबल चमकाओ भाई */}
+                <View style={[styles.priceRow, { flexDirection: 'row', alignItems: 'baseline' }]}>
+                   {hasMultipleVariants && (
+                     <Text style={{ fontSize: 10, color: '#64748b', fontWeight: '500' }}>From </Text>
+                   )}
+                   <Text style={styles.priceSymbol}>₹</Text>
+                   <Text style={styles.priceValue}>{basePrice}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
       />
     </View>
   );

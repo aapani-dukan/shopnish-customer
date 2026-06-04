@@ -5,13 +5,15 @@ import { Sparkles } from 'lucide-react-native';
 
 const { width } = Dimensions.get('window');
 
+// 🎯 फिक्स 1: नए मल्टी-वैरिएंट आर्किटेक्चर के साथ टाइप इंटरफ़ेस को अपडेट किया भाई
 interface Product {
   id: string | number;
   _id?: string | number;
   name: string;
-  price: number;
+  price: number; // होम स्क्रीन से आया हुआ बेस या न्यूनतम प्राइस भाई
   image: string;
   seller?: { businessName: string };
+  hasMultipleVariants?: boolean; // 👈 चेक करने के लिए कि 'From ₹' दिखाना है या नहीं भाई
 }
 
 interface TrendingSectionProps {
@@ -25,8 +27,6 @@ const TrendingSection: React.FC<TrendingSectionProps> = ({ products, numColumns 
   if (!products || products.length === 0) return null;
 
   // Dynamic Card Width Calculation
-  // 32 = total horizontal padding (16 left + 16 right)
-  // (numColumns - 1) * 10 = total gap between cards
   const dynamicCardWidth = (width - 32 - (numColumns - 1) * 10) / numColumns;
 
   return (
@@ -70,7 +70,12 @@ const TrendingSection: React.FC<TrendingSectionProps> = ({ products, numColumns 
               <Text style={styles.seller} numberOfLines={1}>
                 {item.seller?.businessName || 'Verified Shop'}
               </Text>
+              
+              {/* 🎯 फिक्स 2: अगर सामान में कई साइज उपलब्ध हैं तो 'From' लेबल चमकाओ भाई */}
               <View style={styles.priceRow}>
+                 {item.hasMultipleVariants && (
+                   <Text style={styles.fromText}>From </Text>
+                 )}
                  <Text style={styles.currency}>₹</Text>
                  <Text style={styles.price}>{item.price}</Text>
               </View>
@@ -109,7 +114,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f1f5f9',
     overflow: 'hidden',
-    // Minimal shadow for 3-column clean look
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -133,9 +137,10 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 8, fontWeight: '900', color: '#0f172a' },
   
   info: { padding: 8 },
-  name: { fontSize: 12, fontWeight: '700', color: '#1e293b',lineHeight:16,height:32,marginBottom: 2 },
+  name: { fontSize: 12, fontWeight: '700', color: '#1e293b', lineHeight: 16, height: 32, marginBottom: 2 },
   seller: { fontSize: 10, color: '#94a3b8', marginTop: 1, fontWeight: '500' },
   priceRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4, gap: 1 },
+  fromText: { fontSize: 10, color: '#64748b', fontWeight: '600' }, // 🎯 फ्रॉम लेबल की स्टाइल भाई
   currency: { fontSize: 10, fontWeight: '900', color: '#2563eb' },
   price: { fontSize: 15, fontWeight: '900', color: '#2563eb' },
 });

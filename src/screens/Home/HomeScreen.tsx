@@ -143,67 +143,75 @@ const handleSelectCategory = (id: string | number) => {
 };
 
   // --- FLATLIST SECTIONS ---
-  // हम Sticky HeaderIndices का सही उपयोग करने के लिए Sections बनाएंगे
+  // 🎯 फिक्स 1: डेटा ग्रिड में भेजने से पहले हर प्रोडक्ट के 'variants' से बेस प्राइस निकालना भाई!
   const sections = useMemo(() => {
-  const list = [];
-  
-  // 1. HEADER (Top Home Banner)
-  // यहाँ हम सिर्फ 'HERO_BANNER' टाइप के बैनर्स निकाल रहे हैं
-  const topBanners = layoutSections.find(s => s.sectionType === 'HERO_BANNER')?.items || [];
-  list.push({ 
-    type: 'HEADER_CONTENT', 
-    banners: topBanners 
-  });
-
-  // 2. STICKY CONTROLS (Search + Categories)
-  list.push({ type: 'STICKY_CONTROLS' });
-
-  // 3. TRENDING PRODUCTS
-  if (products.length > 0) {
-    list.push({ type: 'TRENDING' });
-  }
-
-  // 4. FLASH SALE AD (Middle Banner)
-  // Trending के ठीक बाद Flash Sale वाला विज्ञापन दिखेगा
-  const flashSale = layoutSections.find(s => s.sectionType === 'flash_sale')?.items || [];
-  if (flashSale.length > 0) {
-    list.push({ type: 'BANNER_AD', data: flashSale });
-  }
-
-  // 5. CATEGORY-WISE SECTIONS + SPECIAL AD
- // 1. डेटा पहले ही निकाल लें
-const categorySpecial = layoutSections.find(s => s.sectionType === 'category_special')?.items || [];
-
-// एक काउंटर रखें जो सिर्फ उन कैटेगरीज को गिनेगा जिनमें प्रोडक्ट्स हैं
-let visibleCategoryCount = 0;
-
-categories.forEach((cat) => {
-  const catProds = products.filter((p: any) => String(p.categoryId) === String(cat.id));
-  
-  if (catProds.length > 0) {
-    visibleCategoryCount++; // एक वैलिड कैटेगरी मिली
-
+    const list = [];
+    
+    // 1. HEADER (Top Home Banner)
+    const topBanners = layoutSections.find(s => s.sectionType === 'HERO_BANNER')?.items || [];
     list.push({ 
-      type: 'CATEGORY_SECTION', 
-      data: cat, 
-      products: catProds.slice(0, 6) 
+      type: 'HEADER_CONTENT', 
+      banners: topBanners 
     });
 
-    // 🔥 "Unique" टच: जब 2 सफल कैटेगरीज दिख जाएं, तब एड दिखाओ
-    // इससे पक्का होगा कि एड हमेशा सही जगह पर ही आएगा
-    if (visibleCategoryCount === 2 && categorySpecial.length > 0) {
-      list.push({ 
-        type: 'BANNER_AD', 
-        data: categorySpecial,
-        extraSpacing: true // रेंडरिंग के समय काम आएगा
-      });
-    }
-  }
-});
+    // 2. STICKY CONTROLS (Search + Categories)
+    list.push({ type: 'STICKY_CONTROLS' });
 
-  return list;
-  // ✅ Dependency array में layoutSections भी जोड़ दिया है
-}, [categories, products, layoutSections]);
+    // 🗺️ प्रोडक्ट्स को नए मल्टी-वैरिएंट आर्किटेक्चर के लिए मैप करो भाई
+    const normalizedProducts = products.map((p: any) => {
+      const variantsList = p.variants || [];
+      // सबसे कम कीमत वाला वैरिएंट ढूंढो भाई ताकि 'Starting From' दिखा सकें
+      const basePrice = variantsList.length > 0 
+        ? Math.min(...variantsList.map((v: any) => Number(v.price || 0)))
+        : Number(p.price || 0);
+
+      return {
+        ...p,
+        price: basePrice, // रेंडरिंग के लिए फ्लैट की बना दी भाई
+        hasMultipleVariants: variantsList.length > 1
+      };
+    });
+
+    // 3. TRENDING PRODUCTS
+    if (normalizedProducts.length > 0) {
+      list.push({ type: 'TRENDING', products: normalizedProducts });
+    }
+
+    // 4. FLASH SALE AD (Middle Banner)
+    const flashSale = layoutSections.find(s => s.sectionType === 'flash_sale')?.items || [];
+    if (flashSale.length > 0) {
+      list.push({ type: 'BANNER_AD', data: flashSale });
+    }
+
+    // 5. CATEGORY-WISE SECTIONS
+    const categorySpecial = layoutSections.find(s => s.sectionType === 'category_special')?.items || [];
+    let visibleCategoryCount = 0;
+
+    categories.forEach((cat) => {
+      // कैटेगरी के हिसाब से फ़िल्टर भी सुधरे हुए प्रोडक्ट्स में से करो भाई
+      const catProds = normalizedProducts.filter((p: any) => String(p.categoryId) === String(cat.id));
+      
+      if (catProds.length > 0) {
+        visibleCategoryCount++;
+
+        list.push({ 
+          type: 'CATEGORY_SECTION', 
+          data: cat, 
+          products: catProds.slice(0, 6) 
+        });
+
+        if (visibleCategoryCount === 2 && categorySpecial.length > 0) {
+          list.push({ 
+            type: 'BANNER_AD', 
+            data: categorySpecial,
+            extraSpacing: true
+          });
+        }
+      }
+    });
+
+    return list;
+  }, [categories, products, layoutSections]);
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -280,12 +288,12 @@ categories.forEach((cat) => {
         </View>
       );
 
-    case 'TRENDING':
-      // 🔥 3-कॉलम ग्रिड के साथ प्रीमियम लुक
-      return <TrendingSection products={products} numColumns={3} />;
+   case 'TRENDING':
+      // 🎯 फिक्स 2: फ्लैट प्राइज्ड सुधरे हुए प्रोडक्ट्स को ट्रेंडिंग ग्रिड में पास किया भाई
+      return <TrendingSection products={item.products} numColumns={3} />;
     
     case 'CATEGORY_SECTION':
-      // 🔥 कैटेगरी वाइज सेक्शन (Shops + 3 Column Products)
+      // 🎯 फिक्स 3: कैटेगरी सेक्शन के अंदर भी नया वैलिडेटेड डेटा मैप होगा भाई
       return (
         <CategorySection 
           category={item.data} 

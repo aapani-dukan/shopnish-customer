@@ -46,58 +46,69 @@ const deliveryCharge = subtotal >= freeLimit ? 0 : baseCharge;
 const total = subtotal + deliveryCharge;
 
   // ✅ Step-by-Step validation logic
+ // 🎯 फिक्स 1: कार्ट के हर आइटम से सही 'variantId' और वैरिएंट-प्राइस निकालने वाला इंजन भाई
   const handlePlaceOrder = async () => {
-  if (!fullName || !phone || !address) {
-    Alert.alert("अधूरा पता", "कृपया अपना नाम, नंबर और पूरा पता दर्ज करें।");
-    return;
-  }
-
-  try {
-    setLoading(true);
-
-    // ✅ Multi-Seller Structure: हर आइटम के साथ उसका sellerId भेजना ज़रूरी है
-    const itemsToOrder = cart.map(item => ({
-      productId: item.productId,
-      sellerId: item.product?.sellerId, // 👈 पक्का करें कि ये डेटा आपके कार्ट में आ रहा है
-      quantity: item.quantity,
-      unitPrice: Number(item.product?.price || 0),
-      totalPrice: Number(item.product?.price || 0) * item.quantity,
-    }));
-
-    const orderData = {
-      customerId: user?.id,
-     newDeliveryAddress: JSON.stringify({
-        fullName,
-        phoneNumber: phone, 
-        address,
-        city: city, // Hardcode के बजाय State variable इस्तेमाल करें
-        pincode: pincode,
-        latitude: currentLocation?.latitude,
-        longitude: currentLocation?.longitude,
-      }),
-      paymentMethod: "cod",
-      deliveryInstructions: instructions,
-      // 💸 Amounts को हमेशा Number() में कन्वर्ट करके भेजें (Backend Safety)
-      subtotal: Number(subtotal),
-      deliveryCharge: Number(deliveryCharge),
-      total: Number(total),
-      items: itemsToOrder,
-      orderSource: "app", // ट्रैक करने के लिए कि ऑर्डर कहाँ से आया
-    };
-
-    const response = await api.post('/api/orders', orderData);
-
-    if (response.status === 201 || response.status === 200) {
-      clearCart();
-      // ✅ OrderSuccessScreen पर नेविगेट करें (अगर बनी हुई है)
-      navigation.replace('OrderSuccess', { orderId: response.data.id });
+    if (!fullName || !phone || !address) {
+      Alert.alert("अधूरा पता", "कृपया अपना नाम, नंबर और पूरा पता दर्ज करें।");
+      return;
     }
-  } catch (error: any) {
-    Alert.alert("ओह!", error.response?.data?.message || "ऑर्डर प्लेस करने में समस्या आई।");
-  } finally {
-    setLoading(false);
-  }
-};
+
+    try {
+      setLoading(true);
+
+      // Multi-Seller Items Extraction with Variant Alignment
+      const itemsToOrder = cart.map(item => {
+        // वैरिएंट लेवल की प्राइस निकालो भाई, फॉलबैक में आइटम लेवल चेक करो
+        const currentUnitPrice = Number(item.variant?.price || item.price || 0);
+        
+        return {
+          productId: item.productId,
+          // 🎯 फिक्स: अब बैकएंड ट्रैकिंग और स्टॉक कटौती के लिए विशिष्ट variantId भेजना अनिवार्य है भाई!
+          variantId: item.variantId || item.variant?.id || null, 
+          sellerId: item.product?.sellerId, 
+          quantity: item.quantity,
+          unitPrice: currentUnitPrice,
+          totalPrice: currentUnitPrice * item.quantity,
+        };
+      });
+
+      // 🎯 100% सटीक और शुद्ध सिंक किया हुआ ऑर्डर डेटा पेलोड भाई
+      const orderData = {
+        customerId: user?.id,
+        newDeliveryAddress: {
+          fullName: fullName,
+          phoneNumber: phone, 
+          addressLine1: address,
+          city: city || "Bundi", 
+          state: "Rajasthan",
+          postalCode: pincode || "323001",
+          latitude: currentLocation?.latitude ? Number(currentLocation.latitude) : 0,
+          longitude: currentLocation?.longitude ? Number(currentLocation.longitude) : 0,
+        },
+        paymentMethod: "cod",
+        deliveryInstructions: instructions || "",
+        
+        subtotal: Number(subtotal),
+        deliveryCharge: Number(deliveryCharge),
+        total: Number(total),
+        
+        items: itemsToOrder,
+        orderSource: "app",
+        cartOrder: true, 
+      };
+
+      const response = await api.post('/api/orders', orderData);
+
+      if (response.status === 201 || response.status === 200) {
+        clearCart();
+        navigation.replace('OrderSuccess', { orderId: response.data.id });
+      }
+    } catch (error: any) {
+      Alert.alert("ओह!", error.response?.data?.message || "ऑर्डर प्लेस करने में समस्या आई।");
+    } finally {
+      setLoading(false);
+    }
+  };
   // UI Components (Same as before)
   const StepIndicator = () => (
     <View style={styles.stepContainer}>
@@ -125,16 +136,24 @@ const total = subtotal + deliveryCharge;
       <StepIndicator />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
-  {/* Step 1: Review Order */}
+  {/* Step 1: Review Order - 🎯 फिक्स 2: यूआई में वैरिएंट साइज और सही कीमत का गुणा दिखाना भाई! */}
   {currentStep === 1 && (
     <View>
       <Text style={styles.sectionTitle}>Review Order</Text>
-      {cart.map((item) => (
-        <View key={item.productId} style={styles.itemRow}>
-          <Text style={styles.itemInfo}>{(item.product?.name || 'Product')} x {item.quantity}</Text>
-          <Text style={styles.itemPrice}>₹{Number(item.product?.price || 0) * item.quantity}</Text>
-        </View>
-      ))}
+      {cart.map((item) => {
+        const itemUnitPrice = Number(item.variant?.price || item.price || 0);
+        const sizeInfo = item.variant?.quantityValue ? ` (${item.variant.quantityValue} ${item.variant.unit})` : '';
+        
+        return (
+          <View key={item.id || item.variantId || item.productId} style={styles.itemRow}>
+            {/* 🎯 जादुई टच: नाम के आगे उसका वजन/साइज भी प्रिंट होगा भाई */}
+            <Text style={styles.itemInfo}>
+              {(item.product?.name || item.name || 'Product')}{sizeInfo} x {item.quantity}
+            </Text>
+            <Text style={styles.itemPrice}>₹{itemUnitPrice * item.quantity}</Text>
+          </View>
+        );
+      })}
       <View style={styles.divider} />
       <TouchableOpacity style={styles.primaryBtn} onPress={() => setCurrentStep(2)}>
         <Text style={styles.btnText}>Proceed to Address</Text>

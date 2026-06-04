@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, ActivityIndicator, Linking } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE,AnimatedRegion } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { io } from 'socket.io-client';
 import { Truck, MapPin, Phone, ChevronLeft, Package, Store, Clock, ShieldCheck } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // ✅ Updated Imports (Modular SDK)
 import { getAuth, getIdToken } from '@react-native-firebase/auth';
-
+import { Image,Platform, Animated } from 'react-native';
 const { width, height } = Dimensions.get('window');
 const GOOGLE_MAPS_APIKEY = 'AIzaSyD4G0AfOt0YPc9d0NwAyo1l_t51qra6xxw';
 const auth = getAuth();
@@ -32,6 +32,47 @@ const hasFitMap = useRef<boolean>(false);
     }
     return liveETA || "Arriving Soon";
   };
+ // 🎯 FIX: यहाँ शुरुआत में सीधा डिफ़ॉल्ट वैल्यू या ट्रैकिंग डेटा का पहला पॉइंट लें
+  const animatedRiderPos = useRef(
+    new AnimatedRegion({
+      latitude: 25.44, // आप चाहें तो यहाँ शुरुआत के लिए कोई भी डिफ़ॉल्ट पॉइंट रख सकते हैं
+      longitude: 75.66,
+      latitudeDelta: 0.015,
+      longitudeDelta: 0.015,
+    })
+  ).current;
+
+  const animatedHeading = useRef(new Animated.Value(0)).current;
+// 🎯 FIX: सीधे सॉकेट से आने वाली लाइव लोकेशन के आधार पर बाइक को चलाएं और घुमाएं
+useEffect(() => {
+  if (liveRiderLocation && liveRiderLocation.lat !== 0) {
+    const newCoords = {
+      latitude: liveRiderLocation.lat,
+      longitude: liveRiderLocation.lng,
+      // 💡 नए वर्शन्स में डेल्टा देना ज़रूरी नहीं है, पर सेफ़ साइड के लिए रख सकते हैं
+      latitudeDelta: 0.015,
+      longitudeDelta: 0.015,
+    };
+
+    // 🏍️ बाइक की पोजीशन को स्मूथली आगे सरकाएं (iOS और Android दोनों के लिए कॉमन .timing तरीका)
+    if (animatedRiderPos) {
+      // @ts-ignore
+      animatedRiderPos.timing({
+        ...newCoords,
+        duration: 1000, // 1 सेकंड में बाइक पुराने पॉइंट से नए पॉइंट पर तैरती हुई जाएगी
+        useNativeDriver: false // मैप एनीमेशन के लिए इसे false ही रखना है
+      }).start();
+    }
+
+    // 🔄 बाइक के मुँह (Heading) को स्मूथली घुमाएं
+    Animated.timing(animatedHeading, {
+      toValue: liveRiderLocation.heading || 0,
+      duration: 400, // 400ms में बाइक एकदम नेचुरल तरीके से मोड़ पर मुड़ेगी
+      useNativeDriver: false,
+    }).start();
+  }
+}, [liveRiderLocation]); // 👈 सिर्फ लाइव राइडर लोकेशन पर नजर रखें
+ 
   const getStatusText = (status: string = "") => {
     const s = status.toLowerCase();
     switch (s) {
@@ -83,8 +124,11 @@ const hasFitMap = useRef<boolean>(false);
     }
   };
 
- // 🎯 2. Socket Initialization (Zomato-style Listener Setup)
+ // 🎯 2. Socket Initialization (Zomato-style Listener Setup with Live Checking)
   useEffect(() => {
+    // पिछले अपडेट का समय रिकॉर्ड करने के लिए टाइमस्टैम्प
+    let lastUpdateTime = Date.now();
+
     const initSocket = async () => {
       const fbUser = auth.currentUser;
       if (!fbUser) return;
@@ -97,20 +141,35 @@ const hasFitMap = useRef<boolean>(false);
       });
 
       socket.current.on('connect', () => {
+        console.log(`🔌 [सॉकेट कनेक्ट]: कस्टमर ऐप सर्वर से जुड़ गई! ID: ${socket.current?.id}`);
         socket.current.emit("register-client", { role: "user", userId: fbUser?.uid });
+        
+        console.log(`📡 [रूम जॉइन]: orderId ${orderId} के रूम को जॉइन करने का रिक्वेस्ट भेजा`);
         socket.current.emit("join-order-room", { orderId: Number(orderId) });
       });
 
-      // 🚨 FIX 2: डिलीवरी बॉय के 'delivery:location-update' वाले लाइव इवेंट को यहाँ हुक किया
-      socket.current.on("delivery:location-update", (data: any) => {
-        console.log("🏍️ Received Live Rider Movement:", data);
-        if (data.latitude && data.longitude) {
+      // 🚨 FIX 2: डिलीवरी बॉय के लाइव इवेंट पर कड़क लॉग्स सेट किए
+     // 🚨 FIX 2: डिलीवरी बॉय के लाइव इवेंट पर कड़क लॉग्स सेट किए (UPDATED)
+      socket.current.on("order:delivery_location", (data: any) => {
+        const currentTime = Date.now();
+        // यह बताएगा कि पिछला डेटा आने और इस डेटा में कितने सेकंड का अंतर है
+        const timeGapInSeconds = ((currentTime - lastUpdateTime) / 1000).toFixed(2);
+        lastUpdateTime = currentTime;
+
+        console.log(`📡 [LOG TICK]: गैप: ${timeGapInSeconds}s | Lat: ${data.lat}, Lng: ${data.lng}`);
+
+        // 🎯 आपकी असली स्टेट 'setLiveRiderLocation' में ताज़ा डेटा सेट करें
+        if (data.lat && data.lng) {
           setLiveRiderLocation({
-            lat: data.latitude,
-            lng: data.longitude,
+            lat: data.lat,
+            lng: data.lng,
             heading: data.heading || 0
           });
         }
+      });
+
+      socket.current.on('disconnect', (reason: string) => {
+        console.log(`❌ [सॉकेट डिसकनेक्ट]: कस्टमर ऐप का सॉकेट कनेक्शन टूटा! कारण: ${reason}`);
       });
 
       socket.current.on('order:status_updated', fetchTracking);
@@ -120,10 +179,10 @@ const hasFitMap = useRef<boolean>(false);
     initSocket();
 
     return () => {
+      console.log("🧹 [क्लीनअप]: ट्रैकिंग स्क्रीन बंद हुई, सॉकेट हटाया गया।");
       socket.current?.disconnect();
     };
   }, [orderId]);
-
  // 🎯 3. Map Coordinates Sync
   const mapNodes = useMemo(() => {
     if (!trackingData) return null;
@@ -168,65 +227,69 @@ const hasFitMap = useRef<boolean>(false);
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.mapWrapper}>
-        <MapView
-          ref={mapRef}
-          provider={PROVIDER_GOOGLE}
-          style={styles.map}
-          initialRegion={{
-            latitude: mapNodes?.riderPos?.latitude || 25.44,
-            longitude: mapNodes?.riderPos?.longitude || 75.66,
-            latitudeDelta: 0.015,
-            longitudeDelta: 0.015,
-          }}
-        >
-          {mapNodes && mapNodes.riderPos.latitude !== 0 && mapNodes.destinationPos.latitude !== 0 && (
-            <>
-              <MapViewDirections
-                origin={mapNodes.riderPos}
-                destination={mapNodes.destinationPos}
-                apikey={GOOGLE_MAPS_APIKEY}
-                strokeWidth={4}
-                strokeColor="#7c3aed"
-                optimizeWaypoints={true}
-                mode="DRIVING"
-                precision="high"
-               onReady={result => {
-                  console.log("✅ Route Found:", result.distance, "km");
-                  setLiveETA(`${Math.ceil(result.duration)} mins`);
-                  
-                  // 🎯 FIX: Auto-fit sirf pehli baar hoga taaki map jhatke na mare
-                  if (!hasFitMap.current) {
-                    mapRef.current?.fitToCoordinates([mapNodes.riderPos, mapNodes.destinationPos], {
-                      edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-                      animated: true,
-                    });
-                    hasFitMap.current = true;
-                  }
-                }}
-                onError={(err) => console.log("❌ Directions Error:", err)}
-              />
-              
-              {/* Rider Marker (🏍️ Added Rotation & Flat parameters for direction angle) */}
-              <Marker 
-                coordinate={mapNodes.riderPos} 
-                anchor={{x:0.5, y:0.5}} 
-                flat={true}
-                rotation={liveRiderLocation?.heading || 0} // 👈 Bike ghumte hi icon bhi ghumega!
-              >
-                <View style={[styles.markerBase, {backgroundColor: '#7c3aed'}]}>
-                  <Truck color="#fff" size={16} />
-                </View>
-              </Marker>
+      <MapView
+  ref={mapRef}
+  provider={PROVIDER_GOOGLE}
+  style={styles.map}
+  initialRegion={{
+    latitude: mapNodes?.riderPos?.latitude || 25.44,
+    longitude: mapNodes?.riderPos?.longitude || 75.66,
+    latitudeDelta: 0.015,
+    longitudeDelta: 0.015,
+  }}
+>
+  {mapNodes && mapNodes.riderPos.latitude !== 0 && mapNodes.destinationPos.latitude !== 0 && (
+    <>
+      <MapViewDirections
+        origin={mapNodes.riderPos}
+        destination={mapNodes.destinationPos}
+        apikey={GOOGLE_MAPS_APIKEY}
+        strokeWidth={4}
+        strokeColor="#7c3aed"
+        optimizeWaypoints={true}
+        mode="DRIVING"
+        precision="high"
+        onReady={result => {
+          console.log("✅ Route Found:", result.distance, "km");
+          setLiveETA(`${Math.ceil(result.duration)} mins`);
+          
+          // 🎯 ZOMATO STYLE: हर बार दूरी कम होने पर मैप अपने आप साइज एडजस्ट (Auto-Zoom) करेगा
+          mapRef.current?.fitToCoordinates([mapNodes.riderPos, mapNodes.destinationPos], {
+            edgePadding: { top: 70, right: 70, bottom: 70, left: 70 }, // थोड़ा स्पेस बढ़ा दिया ताकि साफ़ दिखे
+            animated: true,
+          });
+        }}
+        onError={(err) => console.log("❌ Directions Error:", err)}
+      />
+      
+     {/* 🎯 एनिमेटेड मार्कर (यह बाइक को मक्खन की तरह चलाएगा और घुमाएगा) */}
+<Marker.Animated
+  // 🎯 FIX: 'as any' लगाने से TypeScript की यह एरर तुरंत गायब हो जाएगी
+  coordinate={animatedRiderPos as any}
+  anchor={{ x: 0.5, y: 0.5 }}
+  flat={true}
+  // @ts-ignore (TypeScript एरर न दे इसलिए)
+  rotation={animatedHeading}
+>
+  <Image 
+    source={require('../../assets/delivery_bike.png')} 
+    style={{ 
+      width: 65,      // 📐 साइज बड़ा कर दिया (परफेक्ट विजिबिलिटी)
+      height: 65, 
+      resizeMode: 'contain' 
+    }} 
+  />
+</Marker.Animated>
 
-              {/* Customer/Destination Marker */}
-              <Marker coordinate={mapNodes.destinationPos}>
-                <View style={[styles.markerBase, {backgroundColor: '#ef4444'}]}>
-                  <MapPin color="#fff" size={16} />
-                </View>
-              </Marker>
-            </>
-          )}
-        </MapView>
+      {/* डेस्टिनेशन मार्कर */}
+      <Marker coordinate={mapNodes.destinationPos}>
+        <View style={[styles.markerBase, { backgroundColor: '#ef4444' }]}>
+          <MapPin color="#fff" size={16} />
+        </View>
+      </Marker>
+    </>
+  )}
+</MapView>
         
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <ChevronLeft color="#1e293b" size={24} />
@@ -315,5 +378,6 @@ const styles = StyleSheet.create({
   riderName: { fontSize: 15, fontWeight: '800', color: '#1e293b' },
   riderRating: { fontSize: 11, color: '#94a3b8' },
   callBtn: { backgroundColor: '#10b981', padding: 12, borderRadius: 15 },
-  markerBase: { padding: 8, borderRadius: 20, borderWidth: 3, borderColor: '#fff', elevation: 10 }
+  markerBase: { padding: 8, borderRadius: 20, borderWidth: 3, borderColor: '#fff', elevation: 10 },
+  
 });

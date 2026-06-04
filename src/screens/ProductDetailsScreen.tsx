@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState,useCallback,useEffect } from 'react';
 import { 
   View, Text, Image, ScrollView, StyleSheet, 
   TouchableOpacity, ActivityIndicator, Dimensions, Alert, StatusBar, Platform,FlatList 
@@ -17,26 +17,42 @@ export default function ProductDetailsScreen() {
   const queryClient = useQueryClient();
   const { productId } = route.params as { productId: number };
   const { refreshCart } = useCart();
-  const [quantity, setQuantity] = useState(1);
-const [activeIndex, setActiveIndex] = React.useState(0);
+ const [quantity, setQuantity] = useState(1);
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  
+  // 🎯 फिक्स 1: सिलेक्टेड वैरिएंट को मैनेज करने के लिए नई स्टेट भाई
+  const [selectedVariant, setSelectedVariant] = useState<any>(null);
+
   const { data: product, isLoading, isError } = useQuery<any>({
     queryKey: [`/api/products/${productId}`],
   });
 
+  // जैसे ही प्रोडक्ट डेटा लोड हो, डिफ़ॉल्ट रूप से पहला वैरिएंट सेलेक्ट कर लो भाई
+  useEffect(() => {
+    if (product && product.variants && product.variants.length > 0) {
+      setSelectedVariant(product.variants[0]);
+    } else if (product) {
+      // फॉलबैक अगर बैकएंड पुराना डेटा भेजे भाई
+      setSelectedVariant({ id: null, price: product.price, originalPrice: product.originalPrice, quantityValue: '1', unit: 'unit' });
+    }
+  }, [product]);
+
+  // 🎯 फिक्स 2: कार्ट में अब productId के साथ-साथ 'variantId' भी जाएगा भाई!
   const cartMutation = useMutation({
     mutationFn: async () => {
+      if (!selectedVariant) throw new Error("Please select a variant");
       return apiRequest("POST", "/api/cart/add", {
         productId: product.id,
+        variantId: selectedVariant.id, // 👈 यह है तिजोरी की असली चाबी भाई!
         quantity: quantity
       });
     },
     onSuccess: () => {
       refreshCart();
       queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
-      Alert.alert("Added to Basket 🛍️", `${product.name} is ready for you.`);
+      Alert.alert("Added to Basket 🛍️", `${product.name} (${selectedVariant.quantityValue} ${selectedVariant.unit}) is ready for you.`);
     },
   });
-
   if (isLoading) return <View style={styles.center}><ActivityIndicator size="large" color="#2563eb" /></View>;
   if (isError || !product) return <View style={styles.center}><Text>Something went wrong!</Text></View>;
 
@@ -118,14 +134,47 @@ const [activeIndex, setActiveIndex] = React.useState(0);
              <Text style={styles.brand}>Visit {product.seller?.businessName || "Store"} ›</Text>
           </TouchableOpacity>
           
-          {/* 3. New Pricing & Stepper UI */}
+       {/* 🎯 फिक्स: पुराना प्राइस कंटेनर हटाकर यहाँ नया वैरिएंट सिलेक्शन ग्रिड और अपडेटेड लाइव प्राइस आएगी भाई! */}
+          {product?.variants && product.variants.length > 0 && (
+            <View style={{ marginTop: 15, marginBottom: 5 }}>
+              <Text style={styles.sectionTitle}>Select Size / Weight</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, marginTop: 10 }}>
+                {product.variants.map((v: any) => {
+                  const isCurrent = selectedVariant?.id === v.id;
+                  return (
+                    <TouchableOpacity
+                      key={v.id}
+                      onPress={() => setSelectedVariant(v)}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 10,
+                        backgroundColor: isCurrent ? '#2563eb' : '#f8fafc',
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: isCurrent ? '#2563eb' : '#e2e8f0',
+                      }}
+                    >
+                      <Text style={{ fontWeight: '700', color: isCurrent ? '#fff' : '#0f172a', fontSize: 13 }}>
+                        {v.quantityValue} {v.unit}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: isCurrent ? '#fff' : '#64748b', textAlign: 'center', marginTop: 2, fontWeight: '600' }}>
+                        ₹{v.price}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* 🎯 लाइव सिलेक्टेड वैरिएंट के हिसाब से अपडेटेड प्राइस और स्टेपर भाई */}
           <View style={styles.priceContainer}>
              <View style={styles.priceInfo}>
                 <View style={styles.priceRow}>
                     <Text style={styles.currency}>₹</Text>
-                    <Text style={styles.price}>{product.price}</Text>
-                    {product.originalPrice && (
-                      <Text style={styles.oldPrice}>₹{product.originalPrice}</Text>
+                    <Text style={styles.price}>{selectedVariant?.price || product?.price}</Text>
+                    {(selectedVariant?.originalPrice || product?.originalPrice) && (
+                      <Text style={styles.oldPrice}>₹{selectedVariant?.originalPrice || product?.originalPrice}</Text>
                     )}
                 </View>
                 <Text style={styles.taxLabel}>Inclusive of all taxes</Text>
@@ -144,6 +193,7 @@ const [activeIndex, setActiveIndex] = React.useState(0);
 
           <View style={styles.divider} />
           
+          {/* ✅ ये फीचर्स और डिस्क्रिप्शन वैसे ही रहेंगे भाई, इन्हें नहीं खोना था */}
           <View style={styles.featureRow}>
              <View style={styles.featureItem}>
                 <ShieldCheck size={18} color="#10b981" />
@@ -162,25 +212,37 @@ const [activeIndex, setActiveIndex] = React.useState(0);
         </View>
       </ScrollView>
 
-      {/* 4. Floating Action Footer (The Best Part) */}
+     {/* 🎯 फिक्स 5: लाइव वैरिएंट प्राइजिंग के हिसाब से डायनामिक अमाउंट कैलकुलेटर फुटर भाई */}
       <View style={styles.footerContainer}>
         <View style={styles.footer}>
           <View style={styles.footerPrice}>
               <Text style={styles.footerLabel}>Total Amount</Text>
-              <Text style={styles.totalPriceText}>₹{(product.price * quantity).toLocaleString()}</Text>
+              <Text style={styles.totalPriceText}>
+                ₹{((Number(selectedVariant?.price || product?.price || 0)) * quantity).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </Text>
           </View>
           
           <View style={styles.buttonGroup}>
             <TouchableOpacity 
               style={[styles.addBtn, cartMutation.isPending && { opacity: 0.7 }]} 
               onPress={() => cartMutation.mutate()}
+              disabled={cartMutation.isPending}
             >
               {cartMutation.isPending ? <ActivityIndicator color="#2563eb" size="small" /> : <ShoppingCart color="#2563eb" size={20} />}
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.buyBtn} 
-              onPress={() => navigation.navigate('CheckoutDirect', { item: { ...product, quantity } })}
+              onPress={() => navigation.navigate('CheckoutDirect', { 
+                item: { 
+                  ...product, 
+                  variantId: selectedVariant?.id,
+                  price: selectedVariant?.price,
+                  quantityValue: selectedVariant?.quantityValue,
+                  unit: selectedVariant?.unit,
+                  quantity 
+                } 
+              })}
             >
               <Text style={styles.buyText}>Buy Now</Text>
             </TouchableOpacity>

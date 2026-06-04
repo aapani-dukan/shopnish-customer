@@ -2,18 +2,25 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import api from '../services/api'; // Aapka axios instance
 import { useAuth } from '../context/AuthContext'; // User ID check karne ke liye
 
+// 🎯 फिक्स 1: वैरिएंट सपोर्ट के लिए इंटरफ़ेस में 'variantId' और 'variant' ऑब्जेक्ट जोड़ दिया भाई!
 export interface CartItem {
   id: number;
   productId: number;
+  variantId: number; // 👈 अब यह सबसे जरूरी की (Key) है भाई
   quantity: number;
   product: {
     id: number;
     name: string;
-    price: string | number;
     image?: string;
     sellerId: number;
   };
-  // Mobile UI ke compatibility ke liye helper fields
+  variant?: {
+    id: number;
+    price: string | number;
+    originalPrice?: string | number;
+    quantityValue: string;
+    unit: string;
+  };
   name?: string; 
   price?: number;
 }
@@ -21,14 +28,14 @@ export interface CartItem {
 interface CartContextType {
   cart: CartItem[];
   isLoading: boolean;
-  addToCart: (productId: number, sellerId: number) => Promise<void>;
+  // addToCart में अब प्रोडक्ट ऑब्जेक्ट या आईडी के साथ 'variantId' भी पास होगा भाई
+  addToCart: (product: any, sellerId?: number, variantId?: number) => Promise<void>;
   removeFromCart: (cartItemId: number) => Promise<void>;
   clearCart: () => void;
   getCartTotal: () => number;
   getCartCount: () => number;
   refreshCart: () => Promise<void>;
 }
-
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -59,38 +66,39 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshCart();
   }, [refreshCart]);
 
-  // ✅ 2. Add to Cart (Direct Server Sync)
-  const addToCart = async (product: any, sellerId?: number) => {
-  // 1. Product ID nikalne ka sabse safe tarika
-  const pId = typeof product === 'object' ? product.id : product;
-  const finalSellerId = sellerId || product?.sellerId;
-  
-  // 2. Extra Validation (Safety Check)
-  if (!pId || !finalSellerId) {
-    console.error("❌ Missing Data:", { pId, finalSellerId });
-    return;
-  }
-
-  try {
-    const payload = {
-      productId: Number(pId),
-      quantity: 1,
-      sellerId: Number(sellerId)
-    };
-
-    console.log("🚀 Syncing with Backend:", payload);
-
-    const response = await api.post('/api/cart/add', payload);
+  // 🎯 फिक्स 2: पेलोड के अंदर 'variantId' को वॉटरप्रूफ तरीके से इंजेक्ट करना भाई
+  const addToCart = async (product: any, sellerId?: number, variantId?: number) => {
+    const pId = typeof product === 'object' ? product.id : product;
+    const finalSellerId = sellerId || product?.sellerId;
     
-    if (response.status === 200 || response.status === 201) {
-      await refreshCart(); // Server se nayi cart mangwayein
+    // अगर डायरेक्ट ऑब्जेक्ट आया है और variantId बाहर से नहीं मिला, तो प्रोडक्ट के अंदर से पहला वैरिएंट ढूंढो भाई
+    const finalVariantId = variantId || product?.variantId || product?.variants?.[0]?.id;
+    
+    if (!pId || !finalSellerId) {
+      console.error("❌ Missing Data:", { pId, finalSellerId, finalVariantId });
+      return;
     }
-    
-  } catch (error: any) {
-    console.error("❌ Add to cart failed:", error.response?.data || error.message);
-  }
-};
 
+    try {
+      const payload = {
+        productId: Number(pId),
+        variantId: finalVariantId ? Number(finalVariantId) : null, // 👈 बैकएंड सर्विस को यह वेरिएंट आईडी चाहिए भाई!
+        quantity: 1,
+        sellerId: Number(finalSellerId)
+      };
+
+      console.log("🚀 Syncing Variant-Aware Cart with Backend:", payload);
+
+      const response = await api.post('/api/cart/add', payload);
+      
+      if (response.status === 200 || response.status === 201) {
+        await refreshCart(); 
+      }
+      
+    } catch (error: any) {
+      console.error("❌ Add to cart failed:", error.response?.data || error.message);
+    }
+  };
   // ✅ 3. Remove Item
   const removeFromCart = async (cartItemId: number) => {
     try {
@@ -104,9 +112,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearCart = () => setCart([]);
 
   // ✅ 4. Calculations
+ // ✅ फिक्स: प्रोडक्ट ऑब्जेक्ट से पुरानी प्राइस हटा दी, अब टाइपस्क्रिप्ट एकदम शांत है भाई!
   const getCartTotal = () => {
     return cart.reduce((total, item) => {
-      const price = Number(item.product?.price || 0);
+      // अब यह सिर्फ वैरिएंट की प्राइस देखेगा, या फिर डायरेक्ट आइटम लेवल पर फॉलबैक चेक करेगा भाई
+      const price = Number(item.variant?.price || item.price || 0);
       return total + (price * item.quantity);
     }, 0);
   };

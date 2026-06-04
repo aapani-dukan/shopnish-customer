@@ -43,7 +43,8 @@ export default function CheckoutDirectScreen() {
   const deliveryCharge = subtotal >= freeLimit ? 0 : baseCharge;
   const total = subtotal + deliveryCharge;
 
- const handlePlaceOrder = async () => {
+ // 🎯 फिक्स 1: ऑर्डर पेलोड के अंदर 'variantId' को 100% सटीक इंजेक्ट करना भाई!
+  const handlePlaceOrder = async () => {
     if (!fullName || !phone || !address) {
       Alert.alert("अधूरा पता", "कृपया अपना नाम, नंबर और पूरा पता दर्ज करें।");
       return;
@@ -52,14 +53,13 @@ export default function CheckoutDirectScreen() {
     try {
       setLoading(true);
       const orderData = {
-        // 🎯 FIX: JSON.stringify हटाया और कीज़ को बैकएंड के स्ट्रक्चर से मैच किया
         newDeliveryAddress: {
           fullName: fullName,
           phoneNumber: phone,
-          addressLine1: address, // 👈 'address' को 'addressLine1' किया
+          addressLine1: address,
           city: currentLocation?.city || "Bundi", 
           state: "Rajasthan",
-          postalCode: currentLocation?.pincode || "323001", // 👈 'pincode' को 'postalCode' किया
+          postalCode: currentLocation?.pincode || "323001",
           latitude: Number(currentLocation?.latitude || 0),
           longitude: Number(currentLocation?.longitude || 0),
         },
@@ -67,7 +67,8 @@ export default function CheckoutDirectScreen() {
         deliveryInstructions: instructions,
         item: {
           productId: directItem.id || directItem._id,
-          sellerId: directItem.sellerId,
+          // 🎯 फिक्स: बैकएंड आर्डर सर्विस को अब वैरिएंट ट्रैकिंग के लिए यह चाबी अनिवार्य है भाई!
+          variantId: directItem.variantId || null, 
           quantity: directItem.quantity,
           unitPrice: Number(directItem.price),
           totalPrice: Number(directItem.price) * directItem.quantity,
@@ -82,7 +83,6 @@ export default function CheckoutDirectScreen() {
       const response = await api.post('/api/orders/buy-now', orderData);
 
       if (response.status === 200 || response.status === 201) {
-        // ✅ सीधे Success Screen पर भेजें
         navigation.replace('OrderSuccess', { orderId: response.data.id });
       }
     } catch (error: any) {
@@ -108,18 +108,21 @@ export default function CheckoutDirectScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
   
-  {/* Step 1: Review Item */}
+ {/* Step 1: Review Item - 🎯 फिक्स 2: यूआई में वैरिएंट का वजन/साइज चमकाना भाई! */}
   <View style={styles.card}>
     <View style={styles.itemRow}>
       <Image source={{ uri: directItem.image }} style={styles.itemImg} />
       <View style={{ flex: 1, marginLeft: 15 }}>
         <Text style={styles.itemName}>{directItem.name}</Text>
-        <Text style={styles.itemSub}>Qty: {directItem.quantity} • Price: ₹{directItem.price}</Text>
+        <Text style={styles.itemSub}>
+          Qty: {directItem.quantity} • Price: ₹{directItem.price} 
+          {/* 🎯 जादुई टच: अगर वैरिएंट का साइज उपलब्ध हो तो तुरंत प्रिंट कर दो भाई */}
+          {directItem.quantityValue ? ` (${directItem.quantityValue} ${directItem.unit})` : ''}
+        </Text>
       </View>
       <Text style={styles.itemTotal}>₹{subtotal}</Text>
     </View>
   </View>
-
   {/* Delivery Form */}
   <View style={styles.formContainer}>
     <Text style={styles.sectionTitle}>Delivery Address</Text>

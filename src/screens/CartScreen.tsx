@@ -18,9 +18,10 @@ export default function CartScreen() {
 
   const cartItems = cartData?.items || [];
 
+ // 🎯 फिक्स 1: क्वांटिटी अपडेट में अब productId के साथ variantId भी जाएगा भाई!
   const updateQuantityMutation = useMutation({
-    mutationFn: async ({ productId, quantity }: { productId: string, quantity: number }) => {
-      return apiRequest("POST", "/api/cart/update", { productId, quantity });
+    mutationFn: async ({ productId, variantId, quantity }: { productId: string, variantId: string | null, quantity: number }) => {
+      return apiRequest("POST", "/api/cart/update", { productId, variantId, quantity });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
@@ -28,9 +29,10 @@ export default function CartScreen() {
     }
   });
 
+  // 🎯 फिक्स 2: रिमूव आइटम के एंडपॉइंट में भी अब विशिष्ट variantId जाएगा भाई
   const removeItemMutation = useMutation({
-    mutationFn: async (productId: string) => {
-      return apiRequest("DELETE", `/api/cart/remove/${productId}`);
+    mutationFn: async ({ productId, variantId }: { productId: string, variantId: string | null }) => {
+      return apiRequest("POST", "/api/cart/remove", { productId, variantId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
@@ -38,22 +40,29 @@ export default function CartScreen() {
     }
   });
 
-  const handleUpdateQuantity = (id: string, currentQty: number, delta: number) => {
-    const newQty = currentQty + delta;
+  // 🎯 फिक्स 3: हैंडलर में 'item' का पूरा संदर्भ पास करेंगे ताकि आईडी और वैरिएंट दोनों मिल सकें भाई
+  const handleUpdateQuantity = (cartItem: any, delta: number) => {
+    const productId = cartItem.productId || cartItem.product?.id;
+    const variantId = cartItem.variantId || cartItem.variant?.id || null;
+    const newQty = cartItem.quantity + delta;
+
     if (newQty > 0) {
-      updateQuantityMutation.mutate({ productId: id, quantity: newQty });
+      updateQuantityMutation.mutate({ productId, variantId, quantity: newQty });
     } else {
-      handleRemove(id);
+      handleRemove(cartItem);
     }
   };
 
-  const handleRemove = (id: string) => {
-    Alert.alert("Remove Item", "Remove this from your bag?", [
+  const handleRemove = (cartItem: any) => {
+    const productId = cartItem.productId || cartItem.product?.id;
+    const variantId = cartItem.variantId || cartItem.variant?.id || null;
+    const displaySize = cartItem.variant?.quantityValue ? ` (${cartItem.variant.quantityValue} ${cartItem.variant.unit})` : '';
+
+    Alert.alert("Remove Item", `Remove "${cartItem.product?.name || 'Item'}"${displaySize} from your bag?`, [
       { text: "Cancel", style: 'cancel' },
-      { text: "Remove", style: 'destructive', onPress: () => removeItemMutation.mutate(id) }
+      { text: "Remove", style: 'destructive', onPress: () => removeItemMutation.mutate({ productId, variantId }) }
     ]);
   };
-
   const ListHeader = () => (
     <View style={styles.deliveryHint}>
       <Truck size={18} color="#10b981" />
@@ -61,8 +70,12 @@ export default function CartScreen() {
     </View>
   );
 
+ // 🎯 फिक्स 4: कार्ट लिस्ट के अंदर वैरिएंट का नाम, साइज और सही लाइव कीमत दिखाना भाई!
   const renderItem = ({ item }: any) => {
-    const productId = item.productId || item.product?.id || item.id;
+    // बैकएंड के नए रिस्पॉन्स स्ट्रक्चर के अनुसार प्राइजिंग निकालो भाई
+    const currentPrice = item.variant?.price || item.price || 0;
+    const sizeLabel = item.variant?.quantityValue ? `${item.variant.quantityValue} ${item.variant.unit}` : null;
+
     return (
       <View style={styles.cartItem}>
         <View style={styles.imageContainer}>
@@ -71,24 +84,34 @@ export default function CartScreen() {
         <View style={styles.itemDetails}>
           <View style={styles.rowBetween}>
             <Text style={styles.itemName} numberOfLines={1}>{item.product?.name || item.name}</Text>
-            <TouchableOpacity onPress={() => handleRemove(productId)}>
+            <TouchableOpacity onPress={() => handleRemove(item)}>
               <Trash2 size={18} color="#94a3b8" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.itemSeller}>{item.product?.seller?.businessName || "Verified Shop"}</Text>
+          
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 8 }}>
+            <Text style={styles.itemSeller}>{item.product?.seller?.businessName || "Verified Shop"}</Text>
+            {/* 🎯 जादुई टच: अगर वैरिएंट का साइज उपलब्ध है तो छोटा सा सुंदर टैग दिखाओ भाई */}
+            {sizeLabel && (
+              <View style={{ backgroundColor: '#eff6ff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 0.5, borderColor: '#bfdbfe' }}>
+                <Text style={{ fontSize: 10, color: '#2563eb', fontWeight: '700' }}>{sizeLabel}</Text>
+              </View>
+            )}
+          </View>
           
           <View style={styles.actionRow}>
-            <Text style={styles.itemPrice}>₹{item.product?.price || item.price}</Text>
+            {/* 🎯 फिक्स 5: पैरेंट के बजाय सीधे वैरिएंट की लाइव कीमत रेंडर होगी भाई */}
+            <Text style={styles.itemPrice}>₹{Number(currentPrice).toLocaleString('en-IN')}</Text>
             <View style={styles.stepper}>
               <TouchableOpacity 
-                onPress={() => handleUpdateQuantity(productId, item.quantity, -1)} 
+                onPress={() => handleUpdateQuantity(item, -1)} 
                 style={styles.stepBtn}
               >
                 <Minus size={14} color="#0f172a" />
               </TouchableOpacity>
               <Text style={styles.quantityText}>{item.quantity}</Text>
               <TouchableOpacity 
-                onPress={() => handleUpdateQuantity(productId, item.quantity, 1)} 
+                onPress={() => handleUpdateQuantity(item, 1)} 
                 style={styles.stepBtn}
               >
                 <Plus size={14} color="#0f172a" />
@@ -99,7 +122,6 @@ export default function CartScreen() {
       </View>
     );
   };
-
   if (isLoading) return <View style={styles.center}><ActivityIndicator size="large" color="#2563eb" /></View>;
 
   return (

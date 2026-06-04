@@ -35,11 +35,11 @@ export default function OrdersScreen({ navigation }: any) {
       <FlatList
         data={orders}
         keyExtractor={(item) => item.id.toString()}
+      // 🎯 फिक्स: स्टेटस 'null' होने पर होने वाले क्रैश को रोकने और सटीक नेविगेशन के लिए सुधरा हुआ ब्लॉक भाई!
         renderItem={({ item: order }) => {
-          // 🟢 Web App FIX 2: Overall Status
-          const currentDisplayStatus = order.overallDeliveryStatus || order.status;
+          const currentDisplayStatus = order.overallDeliveryStatus || order.status || 'pending';
           
-          // 🟢 Web App FIX 4: Check if any batch is trackable
+          // ट्रैक करने योग्य स्टेटस चेक भाई
           const isTrackable = order.deliveryBatches?.some((b: any) => 
             ['picked_up', 'out_for_delivery', 'in transit'].includes(b.status?.toLowerCase())
           );
@@ -49,41 +49,48 @@ export default function OrdersScreen({ navigation }: any) {
               {/* Master Order Info */}
               <View style={styles.cardHeader}>
                 <View>
-                  <Text style={styles.orderIdText}>Order #{order.orderNumber}</Text>
-                  <Text style={styles.dateText}>{new Date(order.createdAt).toLocaleDateString()}</Text>
+                  <Text style={styles.orderIdText}>Order #{order.orderNumber || order.id}</Text>
+                  <Text style={styles.dateText}>
+                    {order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-IN') : 'N/A'}
+                  </Text>
                 </View>
                 <View style={[styles.statusBadge, { backgroundColor: getStatusColor(currentDisplayStatus) + '15' }]}>
                   <Text style={[styles.statusText, { color: getStatusColor(currentDisplayStatus) }]}>
-                    {currentDisplayStatus.replace(/_/g, ' ').toUpperCase()}
+                    {currentDisplayStatus?.replace(/_/g, ' ')?.toUpperCase()}
                   </Text>
                 </View>
               </View>
 
               <View style={styles.priceRow}>
                 <Text style={styles.totalLabel}>Total Amount: </Text>
-                <Text style={styles.totalValue}>₹{Number(order.total).toLocaleString('en-IN')}</Text>
+                <Text style={styles.totalValue}>₹{Number(order.total || order.totalAmount || 0).toLocaleString('en-IN')}</Text>
               </View>
 
-              {/* 🟢 Web App FIX 3: Batch-wise Display */}
+              {/* Delivery Batches Summary */}
               {order.deliveryBatches && order.deliveryBatches.length > 0 && (
                 <View style={styles.batchContainer}>
                   <Text style={styles.batchTitle}>
                     <Truck size={16} color="#2563eb" /> Delivery Batches ({order.deliveryBatches.length})
                   </Text>
                   
-                  {order.deliveryBatches.map((batch: any) => (
-                    <View key={batch.id} style={styles.batchCard}>
-                      <View style={styles.batchInfo}>
-                        <Text style={styles.batchIdText}>Batch #{batch.id}</Text>
-                        <View style={[styles.miniBadge, { backgroundColor: getStatusColor(batch.status) }]}>
-                          <Text style={styles.miniBadgeText}>{batch.status.replace(/_/g, ' ')}</Text>
+                  {order.deliveryBatches.map((batch: any) => {
+                    // 🎯 फिक्स 1: अगर स्टेटस खाली (null) हो तो 'Pending' फॉलबैक ताकि replace() फंक्शन ऐप क्रैश न करे भाई!
+                    const bStatus = batch.status || 'preparing';
+                    
+                    return (
+                      <View key={batch.id} style={styles.batchCard}>
+                        <View style={styles.batchInfo}>
+                          <Text style={styles.batchIdText}>Batch #{batch.id}</Text>
+                          <View style={[styles.miniBadge, { backgroundColor: getStatusColor(bStatus) }]}>
+                            <Text style={styles.miniBadgeText}>{bStatus.replace(/_/g, ' ')?.toUpperCase()}</Text>
+                          </View>
                         </View>
+                        <Text style={styles.riderText}>
+                          Rider: {batch.deliveryBoy?.name || "Assigning soon..."}
+                        </Text>
                       </View>
-                      <Text style={styles.riderText}>
-                        Rider: {batch.deliveryBoy?.name || "Assigning soon..."}
-                      </Text>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
 
@@ -91,6 +98,7 @@ export default function OrdersScreen({ navigation }: any) {
               <View style={styles.buttonRow}>
                 <TouchableOpacity 
                   style={styles.detailsBtn}
+                  // 🎯 फिक्स 2: मास्टर आर्डर आईडी को हमेशा स्ट्रिंग/नंबर फॉर्मेट में सेफ़ली पास करना भाई
                   onPress={() => navigation.navigate('OrderDetails', { orderId: order.id })}
                 >
                   <Text style={styles.detailsBtnText}>View Details</Text>
