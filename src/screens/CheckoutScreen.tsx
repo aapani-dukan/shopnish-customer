@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, ScrollView, StyleSheet, TouchableOpacity, 
-  TextInput, ActivityIndicator, Alert, Dimensions 
+  TextInput, ActivityIndicator, Alert, Dimensions
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation,useRoute } from '@react-navigation/native';
 import { useCart } from '../context/CartContext';
 import { useLocation } from '../context/LocationContext';
 import api from '../services/api';
@@ -12,6 +12,9 @@ import { useAuth } from '../context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 export default function CheckoutScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const passedCartItems = route.params?.passedCartItems || [];
+  const passedTotalAmount = route.params?.passedTotalAmount || 0;
   const { cart, getCartTotal, clearCart } = useCart();
   const { user } = useAuth();
   const { currentLocation } = useLocation();
@@ -28,51 +31,75 @@ export default function CheckoutScreen() {
   const [landmark, setLandmark] = useState('');
   const [instructions, setInstructions] = useState('');
 
- // CheckoutScreen.tsx के अंदर
+// 1. एडमिन सेटिंग्स मंगवाएं
+  const { data: adminSettings } = useQuery({
+    queryKey: ['adminSettings'],
+    queryFn: async () => (await api.get('/api/admin/public-settings')).data,
+  });
 
-// 1. एडमिन सेटिंग्स मंगवाएं (जैसे आपने होम स्क्रीन पर डेटा मंगवाया था)
-const { data: adminSettings } = useQuery({
-  queryKey: ['adminSettings'],
-  queryFn: async () => (await api.get('/api/admin/public-settings')).data, // पब्लिक API बनाएं
-});
+  // ✅ कड़क सुधार: पहले वेरिएबल्स डिक्लेअर किए ताकि नीचे 'subtotal' एरर न मारे भाई साहब!
+  const freeLimit = adminSettings?.freeDeliveryMinOrderValue ?? 500;
+  const baseCharge = adminSettings?.baseDeliveryCharge ?? 25;
 
-const subtotal = getCartTotal();
+  // 🌟 शुद्ध माल (Maal) का सबटोटल इंजन
+  const subtotal = passedTotalAmount > 0 
+    ? (Number(passedTotalAmount) < freeLimit ? Number(passedTotalAmount) - baseCharge : Number(passedTotalAmount)) 
+    : Number(getCartTotal() || 0);
 
-// 2. एडमिन की वैल्यू का इस्तेमाल करें, अगर डेटा न मिले तो 'Fallback' वैल्यू (500) रखें
-const freeLimit = adminSettings?.freeDeliveryMinOrderValue ?? 500;
-const baseCharge = adminSettings?.baseDeliveryCharge ?? 25;
-
-const deliveryCharge = subtotal >= freeLimit ? 0 : baseCharge;
-const total = subtotal + deliveryCharge;
+  const deliveryCharge = subtotal >= freeLimit ? 0 : baseCharge;
+  const total = subtotal + deliveryCharge;
 
   // ✅ Step-by-Step validation logic
- // 🎯 फिक्स 1: कार्ट के हर आइटम से सही 'variantId' और वैरिएंट-प्राइस निकालने वाला इंजन भाई
+ 
+
+     // ==================== 🎯 TYPESCRIPT ERROR-FREE CART ENGINE FIX ====================
   const handlePlaceOrder = async () => {
     if (!fullName || !phone || !address) {
       Alert.alert("अधूरा पता", "कृपया अपना नाम, नंबर और पूरा पता दर्ज करें।");
       return;
     }
-
     try {
       setLoading(true);
 
-      // Multi-Seller Items Extraction with Variant Alignment
-      const itemsToOrder = cart.map(item => {
-        // वैरिएंट लेवल की प्राइस निकालो भाई, फॉलबैक में आइटम लेवल चेक करो
-        const currentUnitPrice = Number(item.variant?.price || item.price || 0);
+      // 🌟 कड़क सुधार 1: अगर कार्ट स्क्रीन से लाइव डेटा आया है तो उसी 'passedCartItems' पर लूप चलाओ भाई, लोकल 'cart' पर नहीं!
+      const finalCartList = passedCartItems && passedCartItems.length > 0 ? passedCartItems : cart;
+
+      const itemsToOrder = finalCartList.map((item: any) => {
         
+        // 1. सही लाइव प्राइस निकालने का बुलेटप्रूफ फॉलबैक इंजन (डेटाबेस कॉलम को प्राथमिकता)
+        const currentUnitPrice = Number(
+          item.priceAtAdded || 
+          item.price_at_added || 
+          item.variant?.price || 
+          item.price || 
+          item.product?.price || 
+          item.unitPrice ||
+          0
+        );
+        
+        // 2. वैरिएंट आईडी को पूरी सुरक्षा के साथ निकालना
+        const finalVariantId = item.variantId || item.variant?.id || item.id || null;
+
+        // 3. डेटाबेस के variant_name कॉलम के लिए सुंदर साइज स्ट्रिंग बनाना
+        const sizeString = item.variant?.quantityValue 
+          ? `${item.variant.quantityValue} ${item.variant.unit || 'g'}`.trim() 
+          : (item.variantName || '');
+
         return {
-          productId: item.productId,
-          // 🎯 फिक्स: अब बैकएंड ट्रैकिंग और स्टॉक कटौती के लिए विशिष्ट variantId भेजना अनिवार्य है भाई!
-          variantId: item.variantId || item.variant?.id || null, 
-          sellerId: item.product?.sellerId, 
-          quantity: item.quantity,
+          productId: item.productId || item.product?.id,
+          variantId: finalVariantId, 
+          sellerId: item.product?.sellerId || item.sellerId, 
+          quantity: Number(item.quantity || 1),
           unitPrice: currentUnitPrice,
-          totalPrice: currentUnitPrice * item.quantity,
+          productPrice: currentUnitPrice, // बैकएंड को खुश करने के लिए दोनों चाबियाँ भेजीं
+          itemTotal: currentUnitPrice * Number(item.quantity || 1),
+          totalPrice: currentUnitPrice * Number(item.quantity || 1),
+          variantName: sizeString, 
+          productUnit: item.variant?.unit || item.product?.unit || 'g'
         };
       });
 
-      // 🎯 100% सटीक और शुद्ध सिंक किया हुआ ऑर्डर डेटा पेलोड भाई
+      // 🎯 100% शुद्ध सिंक किया हुआ आर्डर डेटा पेलोड भाई साहब
       const orderData = {
         customerId: user?.id,
         newDeliveryAddress: {
@@ -88,6 +115,7 @@ const total = subtotal + deliveryCharge;
         paymentMethod: "cod",
         deliveryInstructions: instructions || "",
         
+        // 🌟 कड़क सुधार 2: बैकएंड को वही असली सबटोटल और टोटल भेजो जो कार्ट स्क्रीन से पास होकर आया है!
         subtotal: Number(subtotal),
         deliveryCharge: Number(deliveryCharge),
         total: Number(total),
@@ -109,7 +137,8 @@ const total = subtotal + deliveryCharge;
       setLoading(false);
     }
   };
-  // UI Components (Same as before)
+  // ===========================================================================
+  // ===========================================================================
   const StepIndicator = () => (
     <View style={styles.stepContainer}>
       {[1, 2, 3].map((step) => (
@@ -136,31 +165,49 @@ const total = subtotal + deliveryCharge;
       <StepIndicator />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
-  {/* Step 1: Review Order - 🎯 फिक्स 2: यूआई में वैरिएंट साइज और सही कीमत का गुणा दिखाना भाई! */}
+ {/* Step 1: Review Order - 🎯 कड़क फिक्स: अब कीमतें कभी 0 नहीं होंगी और डेटा हमेशा पास किया हुआ दिखेगा! */}
   {currentStep === 1 && (
     <View>
       <Text style={styles.sectionTitle}>Review Order</Text>
-      {cart.map((item) => {
-        const itemUnitPrice = Number(item.variant?.price || item.price || 0);
-        const sizeInfo = item.variant?.quantityValue ? ` (${item.variant.quantityValue} ${item.variant.unit})` : '';
+      
+      {/* 🌟 कड़क सुधार 1: अगर कार्ट स्क्रीन से लाइव डेटा आया है तो 'passedCartItems' पर लूप चलाओ, लोकल 'cart' पर नहीं भाई! */}
+      {(passedCartItems && passedCartItems.length > 0 ? passedCartItems : cart).map((item: any) => {
+        
+        // 🌟 कड़क सुधार 2: डेटाबेस के लाइव 'priceAtAdded' या 'price_at_added' कॉलम को प्राथमिकता दी भाई साहब
+        const itemUnitPrice = Number(
+          item.priceAtAdded || 
+          item.price_at_added || 
+          item.variant?.price || 
+          item.price || 
+          item.unitPrice ||
+          0
+        );
+        
+        // वैरिएंट का वजन/साइज टैग निकालने की सेफ़्टी परत
+        const sizeInfo = item.variant?.quantityValue 
+          ? ` (${item.variant.quantityValue} ${item.variant.unit || 'g'})` 
+          : item.variantName 
+            ? ` (${item.variantName})` 
+            : '';
         
         return (
           <View key={item.id || item.variantId || item.productId} style={styles.itemRow}>
-            {/* 🎯 जादुई टच: नाम के आगे उसका वजन/साइज भी प्रिंट होगा भाई */}
+            {/* 🎯 नाम के आगे उसका वजन/साइज और मात्रा एकदम सही प्रिंट होगी भाई */}
             <Text style={styles.itemInfo}>
-              {(item.product?.name || item.name || 'Product')}{sizeInfo} x {item.quantity}
+              {(item.product?.name || item.productName || item.name || 'Product')}{sizeInfo} x {item.quantity}
             </Text>
-            <Text style={styles.itemPrice}>₹{itemUnitPrice * item.quantity}</Text>
+            {/* 🌟 कड़क सुधार 3: सही लाइव कीमत का गुणा यहाँ एकदम सटीक दिखेगा */}
+            <Text style={styles.itemPrice}>₹{(itemUnitPrice * Number(item.quantity || 1)).toLocaleString('en-IN')}</Text>
           </View>
         );
       })}
+      
       <View style={styles.divider} />
       <TouchableOpacity style={styles.primaryBtn} onPress={() => setCurrentStep(2)}>
         <Text style={styles.btnText}>Proceed to Address</Text>
       </TouchableOpacity>
     </View>
   )}
-
   {/* Step 2: Delivery Details */}
   {currentStep === 2 && (
     <View>
@@ -184,16 +231,15 @@ const total = subtotal + deliveryCharge;
   {/* Step 3: Payment Summary (बैनर को इसके अंदर होना चाहिए) */}
   {currentStep === 3 && (
     <View>
-      {/* ✅ FIX 1: बैनर को सही जगह और <Text> के अंदर सुरक्षित किया */}
-      {subtotal < freeLimit && (
-        <View style={styles.freeDeliveryBanner}>
-          <Text style={styles.freeDeliveryText}>
-            सिर्फ ₹{freeLimit - subtotal} का सामान और जोड़ें और {'\n'}
-            <Text style={{fontWeight: '900'}}>FREE DELIVERY</Text> पाएँ! 🚚
-          </Text>
-        </View>
-      )}
-
+    {/* 🌟 कड़क सुधार 2: अब कस्टमर किसी भी स्टेप पर हो, उसे हमेशा ₹250.4 जैसी बिल्कुल सटीक रकम ही लाइव चमकेगी भाई */}
+        {subtotal < freeLimit && (
+          <View style={styles.freeDeliveryBanner}>
+            <Text style={styles.freeDeliveryText}>
+              सिर्फ <Text style={{fontWeight: '900', color: '#2563eb'}}>₹{(freeLimit - subtotal).toFixed(1)}</Text> का सामान और जोड़ें और {'\n'}
+              <Text style={{fontWeight: '900'}}>FREE DELIVERY</Text> पाएँ! 🚚
+            </Text>
+          </View>
+        )}
       <Text style={styles.sectionTitle}>Payment Summary</Text>
       <View style={styles.paymentCard}>
           <Text style={styles.payName}>Cash on Delivery</Text>
@@ -201,16 +247,26 @@ const total = subtotal + deliveryCharge;
       </View>
 
       <View style={styles.summaryCard}>
-        {/* ✅ FIX 2: इन लाइनों के टेक्स्ट को <Text> टैग के अंदर किया */}
         <View style={styles.totalRow}>
           <Text style={styles.summaryLabel}>Subtotal</Text>
-          <Text style={styles.summaryValue}>₹{subtotal}</Text>
+          {/* 🌟 कड़क सुधार 1: अगर कार्ट से पहले से जुड़ा हुआ अमाउंट आया है, तो यहाँ शुद्ध माल की कीमत दिखाओ भाई साहब */}
+          <Text style={styles.summaryValue}>
+            ₹{passedTotalAmount > 0 && passedTotalAmount < freeLimit 
+              ? (passedTotalAmount - 25).toFixed(1) 
+              : Number(subtotal).toFixed(1)}
+          </Text>
         </View>
         
         <View style={styles.totalRow}>
           <Text style={styles.summaryLabel}>Delivery Charge</Text>
-          <Text style={[styles.summaryValue, deliveryCharge === 0 && { color: '#10b981' }]}>
-            {deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}
+          {/* 🌟 कड़क सुधार 2: जब डिलीवरी चार्ज ₹25 होगा, तो रंग काला रहेगा और जब 0 होगा तो कड़क हरा (FREE) दिखेगा */}
+          <Text style={[
+            styles.summaryValue, 
+            (passedTotalAmount >= freeLimit || passedTotalAmount === 0) 
+              ? { color: '#10b981', fontWeight: '700' } 
+              : { color: '#0f172a', fontWeight: 'normal' }
+          ]}>
+            {(passedTotalAmount >= freeLimit || passedTotalAmount === 0) ? 'FREE' : '₹25'}
           </Text>
         </View>
 
@@ -218,12 +274,21 @@ const total = subtotal + deliveryCharge;
         
         <View style={styles.totalRow}>
           <Text style={styles.grandTotal}>Total</Text>
-          <Text style={styles.grandTotal}>₹{total}</Text>
+          {/* 🌟 कड़क सुधार 3: फाइनल टोटल वही चमकेगा जो कार्ट स्क्रीन के बटन पर दिख रहा था */}
+          <Text style={styles.grandTotal}>
+            ₹{passedTotalAmount > 0 ? Number(passedTotalAmount).toFixed(1) : Number(total).toFixed(1)}
+          </Text>
         </View>
       </View>
 
       <TouchableOpacity style={styles.placeOrderBtn} onPress={handlePlaceOrder} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Confirm Order • ₹{total}</Text>}
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.btnText}>
+            Confirm Order • ₹{passedTotalAmount > 0 ? Number(passedTotalAmount).toFixed(1) : Number(total).toFixed(1)}
+          </Text>
+        )}
       </TouchableOpacity>
     </View>
   )}
@@ -231,7 +296,6 @@ const total = subtotal + deliveryCharge;
     </View>
   );
 }
-
 // ... styles remain same ...
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#fff' },

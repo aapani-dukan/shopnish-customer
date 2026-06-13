@@ -158,16 +158,46 @@ const handleSelectCategory = (id: string | number) => {
     list.push({ type: 'STICKY_CONTROLS' });
 
     // 🗺️ प्रोडक्ट्स को नए मल्टी-वैरिएंट आर्किटेक्चर के लिए मैप करो भाई
-    const normalizedProducts = products.map((p: any) => {
+  const normalizedProducts = products.map((p: any) => {
       const variantsList = p.variants || [];
-      // सबसे कम कीमत वाला वैरिएंट ढूंढो भाई ताकि 'Starting From' दिखा सकें
-      const basePrice = variantsList.length > 0 
-        ? Math.min(...variantsList.map((v: any) => Number(v.price || 0)))
-        : Number(p.price || 0);
+      
+      // ==================== 🎯 100% बुलेटप्रूफ होम स्क्रीन डबल-की डिस्काउंट इंजन ====================
+      let basePrice = Number(p.price || 0);
+      
+      // 🌟 कड़क सुधार 1: मुख्य प्रोडक्ट लेवल पर mrp और originalPrice दोनों को पकड़ा भाई साहब
+      let baseMrp = Number(p.mrp || p.originalPrice || 0);
+
+      if (variantsList.length > 0) {
+        // सबसे पहले वो वैरिएंट ढूँढो जिसकी कीमत सबसे कम (Minimum Price) है भाई साहब
+        const lowestVariant = variantsList.reduce((min: any, v: any) => 
+          Number(v.price || 0) < Number(min.price || 0) ? v : min, 
+          variantsList[0]
+        );
+
+        basePrice = Number(lowestVariant?.price || basePrice);
+        
+        // 🌟 कड़क सुधार 2: वैरिएंट के अंदर भी दोनों चाबियों (mrp / originalPrice) को सुरक्षित रूप से पकड़ा
+        baseMrp = Number(lowestVariant?.mrp || lowestVariant?.originalPrice || baseMrp);
+      }
+
+      // साइकोलॉजी रूल: ₹100 से कम बचत पर Percentage OFF, ज़्यादा बचत पर FLAT ₹ OFF भाई साहब
+      const savings = baseMrp - basePrice;
+      let calculatedDiscountText = '';
+      if (baseMrp > basePrice && savings > 0) {
+        if (savings < 100) {
+          const percentOff = Math.round((savings / baseMrp) * 100);
+          calculatedDiscountText = `${percentOff}% OFF`;
+        } else {
+          calculatedDiscountText = `Flat ₹${Math.round(savings)} OFF`;
+        }
+      }
 
       return {
         ...p,
-        price: basePrice, // रेंडरिंग के लिए फ्लैट की बना दी भाई
+        price: basePrice, // रेंडरिंग के लिए फ्लैट की
+        mrp: baseMrp,     // ✅ कड़क सुधार: कटी हुई लाइन दिखाने के लिए फ्लैट MRP चाबी जोड़ी
+        originalPrice: String(baseMrp), // बैकवर्ड सेफ़्टी के लिए पुरानी की को भी जिंदा रखा भाई
+        discountText: calculatedDiscountText, // ✅ कड़क सुधार: यूआई कार्ड के लिए पहले से ही टेक्स्ट तैयार कर दिया भाई साहब
         hasMultipleVariants: variantsList.length > 1
       };
     });
@@ -181,7 +211,7 @@ const handleSelectCategory = (id: string | number) => {
     const flashSale = layoutSections.find(s => s.sectionType === 'flash_sale')?.items || [];
     if (flashSale.length > 0) {
       list.push({ type: 'BANNER_AD', data: flashSale });
-    }
+    } 
 
     // 5. CATEGORY-WISE SECTIONS
     const categorySpecial = layoutSections.find(s => s.sectionType === 'category_special')?.items || [];

@@ -26,8 +26,7 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
     if (['cancelled', 'rejected'].includes(s)) return '#ef4444';
     return '#7c3aed';
   };
-
-  return (
+return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
@@ -50,8 +49,7 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* 🟢 Web Logic: Delivery Batches (Multi-Seller support) */}
-      {/* 🎯 फिक्स: शिपमेंट बैच के अंदर खरीदे गए आइटम्स और उनके विशिष्ट वैरिएंट साइज को रेंडर करना भाई! */}
+        {/* Shipment Details Section */}
         <Text style={styles.sectionTitle}>Shipments & Sellers</Text>
         {order?.deliveryBatchesSummary?.map((batch: any, index: number) => (
           <View key={index} style={styles.batchContainer}>
@@ -65,9 +63,9 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
               </Text>
             </View>
 
-            {/* Sub-orders in this batch */}
+            {/* Sub-orders map list */}
             {batch.subOrders?.map((so: any) => (
-              <View key={so.subOrderId} style={{ borderBottomWidth: so.items?.length ? 1 : 0, borderBottomColor: '#f1f5f9', paddingBottom: 10 }}>
+              <View key={so.subOrderId} style={{ borderBottomWidth: so.items?.length ? 1 : 0, borderBottomColor: '#f1f5f9', paddingBottom: 10, marginBottom: 10 }}>
                 <View style={[styles.sellerRow, { borderBottomWidth: 0, marginBottom: 5 }]}>
                   <View style={styles.sellerInfo}>
                     <Store size={18} color="#64748b" />
@@ -79,12 +77,15 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
                   <CheckCircle2 size={18} color="#10b981" />
                 </View>
 
-                {/* 🎯 जादुई फिक्स: इस सब-ऑर्डर के अंदर के सभी प्रोडक्ट्स और वैरिएंट्स की लिस्ट भाई */}
+                {/* Suborder Items and Sizes listing */}
                 {so.items && so.items.length > 0 && (
                   <View style={{ paddingLeft: 28, marginTop: 5, gap: 6 }}>
                     {so.items.map((item: any, idx: number) => {
-                      // वैरिएंट का साइज/यूनिट निकालने का सुरक्षित तरीका भाई
-                      const itemSize = item.variantName || item.variantTitle || item.quantityValue ? `${item.quantityValue} ${item.unit || ''}` : null;
+                      
+                      // वैरिएंट का साइज/यूनिट निकालने का 100% वॉटरप्रूफ तरीका (undefined आना बंद!)
+                      const itemSize = item.variantName || 
+                        (item.quantityValue ? `${item.quantityValue} ${item.unit || ''}`.trim() : null) ||
+                        (item.productUnit ? `1 ${item.productUnit}` : null);
                       
                       return (
                         <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -111,7 +112,11 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
             {batch.deliveryBoy && (
               <View style={[styles.riderBox, { marginTop: 12 }]}>
                 <View style={styles.riderDetails}>
-                  <View style={styles.riderAvatar}><Text style={styles.avatarText}>{batch.deliveryBoy.name ? batch.deliveryBoy.name[0] : 'R'}</Text></View>
+                  <View style={styles.riderAvatar}>
+                    <Text style={styles.avatarText}>
+                      {batch.deliveryBoy.name ? batch.deliveryBoy.name[0] : 'R'}
+                    </Text>
+                  </View>
                   <View style={{ marginLeft: 12 }}>
                     <Text style={styles.riderName}>{batch.deliveryBoy.name}</Text>
                     <Text style={styles.riderSub}>Delivery Partner</Text>
@@ -127,15 +132,20 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
             )}
           </View>
         ))}  
-        {/* Payment & Address */}
+
+        {/* Delivery & Payment Info */}
         <Text style={styles.sectionTitle}>Delivery & Payment</Text>
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <MapPin size={20} color="#94a3b8" />
             <View style={styles.infoTextGroup}>
               <Text style={styles.infoLabel}>Delivery Address</Text>
-              <Text style={styles.infoValue}>{order?.customerDeliveryAddress?.fullName}</Text>
-              <Text style={styles.addressSub}>{order?.customerDeliveryAddress?.address}</Text>
+              <Text style={styles.infoValue}>
+                {order?.customerDeliveryAddress?.fullName || order?.deliveryAddressName || 'Customer'}
+              </Text>
+              <Text style={styles.addressSub}>
+                {order?.customerDeliveryAddress?.address || order?.deliveryAddress || 'N/A'}
+              </Text>
             </View>
           </View>
           
@@ -145,34 +155,50 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
             <CreditCard size={20} color="#94a3b8" />
             <View style={styles.infoTextGroup}>
               <Text style={styles.infoLabel}>Payment Method</Text>
-              <Text style={styles.infoValue}>{order?.paymentMethod?.toUpperCase()}</Text>
+              <Text style={styles.infoValue}>{order?.paymentMethod?.toUpperCase() || 'COD'}</Text>
               <Text style={[styles.paymentStatus, { color: order?.paymentStatus === 'paid' ? '#10b981' : '#f59e0b' }]}>
-                {order?.paymentStatus?.toUpperCase()}
+                {order?.paymentStatus?.toUpperCase() || 'PENDING'}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Bill Summary */}
+        {/* बिल समरी कार्ड - एकदम क्लीन और सटीक गणित */}
         <View style={styles.billCard}>
           <Text style={styles.billTitle}>Bill Summary</Text>
+          
+          {/* शुद्ध माल की कीमत */}
           <View style={styles.billRow}>
             <Text style={styles.billLabel}>Item Total</Text>
-            <Text style={styles.billValue}>₹{order?.total}</Text>
+            <Text style={styles.billValue}>₹{Number(order?.subtotal || 0).toFixed(1)}</Text>
           </View>
-          <View style={styles.billRow}>
-            <Text style={styles.billLabel}>Delivery Fee</Text>
-            <Text style={styles.billValue}>FREE</Text>
-          </View>
+          
+          {/* लाइव डायनामिक डिलीवरी फीस */}
+          {(() => {
+            const deliveryFee = Number(
+              order?.deliveryCharge !== undefined ? order?.deliveryCharge : 
+              order?.delivery_charge !== undefined ? order?.delivery_charge : 
+              0
+            );
+            return (
+              <View style={styles.billRow}>
+                <Text style={styles.billLabel}>Delivery Fee</Text>
+                <Text style={[styles.billValue, deliveryFee === 0 ? { color: '#10b981', fontWeight: '700' } : { color: '#0f172a' }]}>
+                  {deliveryFee === 0 ? 'FREE' : `₹${deliveryFee}`}
+                </Text>
+              </View>
+            );
+          })()}
+
+          {/* अंतिम ग्रैंड टोटल वैल्यू */}
           <View style={[styles.billRow, { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f1f5f9' }]}>
             <Text style={styles.totalLabel}>Grand Total</Text>
-            <Text style={styles.totalValue}>₹{order?.total}</Text>
+            <Text style={styles.totalValue}>₹{Number(order?.total || 0).toFixed(1)}</Text>
           </View>
         </View>
-
       </ScrollView>
-
-      {/* Track Button (Sticky at bottom) */}
+      
+      {/* Sticky Bottom Track Button */}
       <View style={styles.footer}>
         <TouchableOpacity 
           style={styles.trackFullBtn}
@@ -184,8 +210,8 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
+ 
+   const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff' },

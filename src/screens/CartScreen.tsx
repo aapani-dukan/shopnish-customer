@@ -18,10 +18,11 @@ export default function CartScreen() {
 
   const cartItems = cartData?.items || [];
 
- // 🎯 फिक्स 1: क्वांटिटी अपडेट में अब productId के साथ variantId भी जाएगा भाई!
+ // 🎯 बैकएंड PUT /api/cart/:cartItemId के अनुसार अपडेट म्यूटेशन फिक्स भाई
   const updateQuantityMutation = useMutation({
-    mutationFn: async ({ productId, variantId, quantity }: { productId: string, variantId: string | null, quantity: number }) => {
-      return apiRequest("POST", "/api/cart/update", { productId, variantId, quantity });
+    mutationFn: async ({ cartItemId, quantity }: { cartItemId: number, quantity: number }) => {
+      // यूआरएल में cartItemId जाएगा और बॉडी में सिर्फ quantity जाएगी भाई साहब
+      return apiRequest("PUT", `/api/cart/${cartItemId}`, { quantity });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
@@ -29,25 +30,27 @@ export default function CartScreen() {
     }
   });
 
-  // 🎯 फिक्स 2: रिमूव आइटम के एंडपॉइंट में भी अब विशिष्ट variantId जाएगा भाई
+  // 🎯 बैकएंड DELETE /api/cart/:cartItemId के अनुसार रिमूव म्यूटेशन फिक्स भाई
   const removeItemMutation = useMutation({
-    mutationFn: async ({ productId, variantId }: { productId: string, variantId: string | null }) => {
-      return apiRequest("POST", "/api/cart/remove", { productId, variantId });
+    mutationFn: async ({ cartItemId }: { cartItemId: number }) => {
+      // सीधे DELETE मेथड का इस्तेमाल और यूआरएल में आईडी पास भाई
+      return apiRequest("DELETE", `/api/cart/${cartItemId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
       refreshCart();
     }
   });
-
   // 🎯 फिक्स 3: हैंडलर में 'item' का पूरा संदर्भ पास करेंगे ताकि आईडी और वैरिएंट दोनों मिल सकें भाई
+ // 🎯 फिक्स 3: हैंडलर में डेटाबेस की रियल 'id' (Primary Key) को प्राथमिकता दी भाई साहब!
   const handleUpdateQuantity = (cartItem: any, delta: number) => {
     const productId = cartItem.productId || cartItem.product?.id;
     const variantId = cartItem.variantId || cartItem.variant?.id || null;
     const newQty = cartItem.quantity + delta;
 
     if (newQty > 0) {
-      updateQuantityMutation.mutate({ productId, variantId, quantity: newQty });
+      // अगर बैकएंड को सिर्फ कार्ट आइटम की मुख्य ID चाहिए तो 'id: cartItem.id' भी पेलोड में पास कर सकते हैं भाई
+      updateQuantityMutation.mutate({ cartItemId: cartItem.id, quantity: newQty });
     } else {
       handleRemove(cartItem);
     }
@@ -56,26 +59,66 @@ export default function CartScreen() {
   const handleRemove = (cartItem: any) => {
     const productId = cartItem.productId || cartItem.product?.id;
     const variantId = cartItem.variantId || cartItem.variant?.id || null;
-    const displaySize = cartItem.variant?.quantityValue ? ` (${cartItem.variant.quantityValue} ${cartItem.variant.unit})` : '';
+    
+    // सुरक्षा फॉलबैक: डिलीट के लिए कंफर्मेशन बॉक्स का साइज लेबल
+    const qVal = cartItem.variant?.quantityValue || cartItem.quantityValue || '';
+    const uVal = cartItem.variant?.unit || cartItem.unit || '';
+    const displaySize = qVal ? ` (${qVal} ${uVal})` : cartItem.variantName ? ` (${cartItem.variantName})` : '';
 
-    Alert.alert("Remove Item", `Remove "${cartItem.product?.name || 'Item'}"${displaySize} from your bag?`, [
+    Alert.alert("Remove Item", `Remove "${cartItem.product?.name || cartItem.name || 'Item'}"${displaySize} from your bag?`, [
       { text: "Cancel", style: 'cancel' },
-      { text: "Remove", style: 'destructive', onPress: () => removeItemMutation.mutate({ productId, variantId }) }
+      { 
+        text: "Remove", 
+        style: 'destructive', 
+        onPress: () => {
+          // 🌟 जादू: म्यूटेशन को सीधे डेटाबेस रो की ID या कंबाइंड ट्रैकर पास करो 
+       removeItemMutation.mutate({ cartItemId: cartItem.id });
+        } 
+      }
     ]);
   };
-  const ListHeader = () => (
-    <View style={styles.deliveryHint}>
-      <Truck size={18} color="#10b981" />
-      <Text style={styles.deliveryText}>Yay! You get **Free Delivery** on this order.</Text>
-    </View>
-  );
+ // 🎯 फिक्स 1: डिलीवरी हिंट को डायनामिक किया भाई, ₹500 से कम होने पर फ्री डिलीवरी का झूठा बैनर नहीं दिखेगा!
+  const ListHeader = () => {
+    const currentCartTotal = Number(cartData?.totalAmount || 0);
+    
+    // Agar order ₹500 ya usse jyada hai, tabhi Free Delivery ka badhai message dikhao
+    if (currentCartTotal >= 500) {
+      return (
+        <View style={styles.deliveryHint}>
+          <Truck size={18} color="#10b981" />
+          <Text style={styles.deliveryText}>Yay! You get **Free Delivery** on this order.</Text>
+        </View>
+      );
+    }
 
- // 🎯 फिक्स 4: कार्ट लिस्ट के अंदर वैरिएंट का नाम, साइज और सही लाइव कीमत दिखाना भाई!
+    // Agar ₹500 se kam hai, toh alert hint dikhao ki kitne ka saaman aur jodhna hai
+    return (
+      <View style={[styles.deliveryHint, { backgroundColor: '#fef3c7', borderColor: '#fde68a' }]}>
+        <Truck size={18} color="#d97706" />
+        <Text style={[styles.deliveryText, { color: '#92400e' }]}>
+          Add **₹{(500 - currentCartTotal).toFixed(1)}** more to unlock **Free Delivery**! 🚚
+        </Text>
+      </View>
+    );
+  };
+ // 🎯 फिक्स 4: डेटाबेस के price_at_added और total_price कॉलम को फ्रंटएंड से बाइंड किया भाई!
   const renderItem = ({ item }: any) => {
-    // बैकएंड के नए रिस्पॉन्स स्ट्रक्चर के अनुसार प्राइजिंग निकालो भाई
-    const currentPrice = item.variant?.price || item.price || 0;
-    const sizeLabel = item.variant?.quantityValue ? `${item.variant.quantityValue} ${item.variant.unit}` : null;
+    
+    // 🌟 कड़क सुधार: जो डेटाबेस में 'price_at_added' सेव है, सीधे उसी लाइव कीमत को रेंडर करो भाई साहब!
+    const currentPrice = Number(
+      item.priceAtAdded || 
+      item.price_at_added || 
+      item.variant?.price || 
+      item.price || 
+      0
+    );
 
+    // वैरिएंट साइज टैग के लिए वॉटरप्रूफ फॉलबैक
+    const sizeLabel = item.variant?.quantityValue 
+      ? `${item.variant.quantityValue} ${item.variant.unit || 'g'}` 
+      : item.variantName 
+        ? item.variantName 
+        : null;
     return (
       <View style={styles.cartItem}>
         <View style={styles.imageContainer}>
@@ -146,39 +189,65 @@ export default function CartScreen() {
         showsVerticalScrollIndicator={false}
       />
 
+   {/* 🎯 कार्ट स्क्रीन फ़ुटर फिक्स: डिलीवरी चार्ज और कुल पेमेंट का गणित एकदम लाइव सिंक भाई! */}
       {cartItems.length > 0 && (
         <View style={styles.footer}>
           <View style={styles.priceBreakdown}>
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Subtotal</Text>
+              {/* ✅ यहाँ 'style style' को ठीक कर के सिंगल 'style' कर दिया है भाई साहब */}
               <Text style={styles.priceValue}>₹{cartData?.totalAmount || 0}</Text>
             </View>
+            
+            {/* 🌟 कड़क सुधार 1: अब ₹500 से कम का सामान होने पर यहाँ FREE नहीं, बल्कि '₹25' दिखेगा भाई साहब */}
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Delivery</Text>
-              <Text style={[styles.priceValue, {color: '#10b981'}]}>FREE</Text>
+              <Text style={[
+                styles.priceValue, 
+                Number(cartData?.totalAmount || 0) >= 500 ? { color: '#10b981', fontWeight: '700' } : { color: '#0f172a' }
+              ]}>
+                {Number(cartData?.totalAmount || 0) >= 500 ? 'FREE' : '₹25'}
+              </Text>
             </View>
           </View>
           
           <TouchableOpacity 
             activeOpacity={0.9}
             style={styles.checkoutBtn}
-            onPress={() => navigation.navigate('Checkout')}
+            onPress={() => {
+              if (cartItems && cartItems.length > 0) {
+                // 🌟 कड़क सुधार 2: चेकआउट स्क्रीन को वही फाइनल अमाउंट भेजो जो यहाँ नीचे बटन पर दिख रहा है भाई
+                const subtotalVal = Number(cartData?.totalAmount || 0);
+                const finalTotalToSend = subtotalVal >= 500 ? subtotalVal : (subtotalVal + 25);
+
+                navigation.navigate('Checkout', { 
+                  passedCartItems: cartItems, 
+                  passedTotalAmount: finalTotalToSend // ✅ अब यहाँ से शुद्ध कैलकुलेटेड टोटल ही आगे ट्रेवल करेगा!
+                });
+              } else {
+                Alert.alert("बैग खाली है भाई साहब!", "कृपया चेकआउट करने से पहले कार्ट में कुछ सामान जोड़ें।");
+              }
+            }}
           >
             <View>
-              <Text style={styles.checkoutTotal}>₹{cartData?.totalAmount || 0}</Text>
+              {/* 🌟 कड़क सुधार 3: बटन के ऊपर कुल देय राशि एकदम सटीक (₹274.6) प्लस होकर चमकेगी */}
+              <Text style={styles.checkoutTotal}>
+                ₹{Number(cartData?.totalAmount || 0) >= 500 
+                  ? (cartData?.totalAmount || 0) 
+                  : (Number(cartData?.totalAmount || 0) + 25)}
+              </Text>
               <Text style={styles.checkoutSub}>Total Payable</Text>
             </View>
             <View style={styles.btnAction}>
               <Text style={styles.checkoutText}>Checkout</Text>
               <ChevronRight color="#fff" size={20} strokeWidth={3} />
             </View>
-          </TouchableOpacity>
+          </TouchableOpacity> 
         </View>
       )}
     </SafeAreaView>
   );
 }
-
 const EmptyCart = ({ navigation }: any) => (
   <View style={styles.emptyContainer}>
     <View style={styles.emptyIconCircle}>

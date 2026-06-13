@@ -11,7 +11,9 @@ interface Product {
   id: string | number;
   _id?: string | number;
   name: string;
-  price: number; // होम स्क्रीन से आया हुआ बेस या न्यूनतम प्राइस भाई
+  price: number; 
+  mrp?: number;
+  discountText?: string;
   image: string;
   seller?: { businessName: string };
   categoryId: string | number;
@@ -77,8 +79,7 @@ const CategorySection: React.FC<CategorySectionProps> = ({ category, products, n
           <Text style={styles.seeAllBtn}>सब देखें</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Products Grid */}
+{/* Products Grid */}
       {categoryProducts.length > 0 ? (
         <View style={[styles.gridContainer, { gap: 10 }]}>
           {categoryProducts.map(item => (
@@ -100,14 +101,29 @@ const CategorySection: React.FC<CategorySectionProps> = ({ category, products, n
                   {item.seller?.businessName || "Verified Shop"}
                 </Text>
 
-                {/* 🎯 फिक्स 2: अगर सामान में कई साइज उपलब्ध हैं तो प्राइज रो में 'From' लेबल चमकाओ भाई */}
-                <View style={[styles.priceRow, { alignItems: 'baseline' }]}>
-                  {item.hasMultipleVariants && (
-                    <Text style={styles.fromText}>From </Text>
-                  )}
-                  <Text style={styles.currency}>₹</Text>
-                  <Text style={styles.priceValue}>{item.price}</Text>
+                {/* 🎯 फिक्स 2: कटी हुई MRP और डायनामिक बिज़नेस डिस्काउंट बैज का महा-संगम भाई साहब */}
+                <View style={{ marginTop: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                    {item.hasMultipleVariants && (
+                      <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '600' }}>From </Text>
+                    )}
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>₹{item.price}</Text>
+                    
+                    {Number(item.mrp || 0) > Number(item.price || 0) && (
+                      <Text style={{ fontSize: 11, color: '#94a3b8', textDecorationLine: 'line-through' }}>
+                        ₹{item.mrp}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* डायनामिक बिज़नेस डिस्काउंट बैज (% OFF या Flat OFF) */}
+                  {item.discountText ? (
+                    <View style={{ backgroundColor: '#f0fdf4', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, alignSelf: 'flex-start', marginTop: 3 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#16a34a' }}>{item.discountText}</Text>
+                    </View>
+                  ) : null}
                 </View>
+
               </View>
             </TouchableOpacity>
           ))}
@@ -115,8 +131,6 @@ const CategorySection: React.FC<CategorySectionProps> = ({ category, products, n
       ) : (
         <Text style={styles.comingSoonText}>जल्द आ रहा है...</Text>
       )}
-
-      {/* Shops Row */}
       {category.shops && category.shops.length > 0 && (
         <View style={styles.shopsContainer}>
           {category.shops.slice(0, 2).map((shop: any) => (
@@ -134,6 +148,7 @@ const CategorySection: React.FC<CategorySectionProps> = ({ category, products, n
     </View>
   );
 };
+     
 
 export default CategorySection;
 

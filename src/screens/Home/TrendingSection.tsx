@@ -10,7 +10,9 @@ interface Product {
   id: string | number;
   _id?: string | number;
   name: string;
-  price: number; // होम स्क्रीन से आया हुआ बेस या न्यूनतम प्राइस भाई
+  price: number; 
+  mrp?: number;
+  discountText?: string;
   image: string;
   seller?: { businessName: string };
   hasMultipleVariants?: boolean; // 👈 चेक करने के लिए कि 'From ₹' दिखाना है या नहीं भाई
@@ -64,21 +66,38 @@ const TrendingSection: React.FC<TrendingSectionProps> = ({ products, numColumns 
               )}
             </View>
 
-            {/* Content Area */}
+          {/* Content Area */}
             <View style={styles.info}>
               <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
               <Text style={styles.seller} numberOfLines={1}>
                 {item.seller?.businessName || 'Verified Shop'}
               </Text>
               
-              {/* 🎯 फिक्स 2: अगर सामान में कई साइज उपलब्ध हैं तो 'From' लेबल चमकाओ भाई */}
-              <View style={styles.priceRow}>
-                 {item.hasMultipleVariants && (
-                   <Text style={styles.fromText}>From </Text>
-                 )}
-                 <Text style={styles.currency}>₹</Text>
-                 <Text style={styles.price}>{item.price}</Text>
+              {/* 🎯 फिक्स 2: कटी हुई MRP और डायनामिक बिज़नेस डिस्काउंट बैज का महा-संगम भाई साहब */}
+              <View style={{ marginTop: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                  {item.hasMultipleVariants && (
+                    <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '600' }}>From </Text>
+                  )}
+                  {/* असली सेलिंग प्राइस */}
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>₹{item.price}</Text>
+                  
+                  {/* अगर MRP उपलब्ध है और सेलिंग प्राइस से ज़्यादा है तो लाइन से कटी हुई MRP छपेगी भाई */}
+                  {Number(item.mrp || 0) > Number(item.price || 0) && (
+                    <Text style={{ fontSize: 11, color: '#94a3b8', textDecorationLine: 'line-through' }}>
+                      ₹{item.mrp}
+                    </Text>
+                  )}
+                </View>
+
+                {/* डायनामिक बिज़नेस डिस्काउंट बैज (% OFF या Flat OFF) */}
+                {item.discountText ? (
+                  <View style={{ backgroundColor: '#f0fdf4', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, alignSelf: 'flex-start', marginTop: 3 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#16a34a' }}>{item.discountText}</Text>
+                  </View>
+                ) : null}
               </View>
+
             </View>
           </TouchableOpacity>
         ))}

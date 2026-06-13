@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, FlatList, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
+
 const { width } = Dimensions.get('window');
 
 export default function CategoryDetailsScreen({ route, navigation }: any) {
@@ -29,7 +30,7 @@ export default function CategoryDetailsScreen({ route, navigation }: any) {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#2563eb" />
       </View>
     );
@@ -37,21 +38,23 @@ export default function CategoryDetailsScreen({ route, navigation }: any) {
 
   if (!isLoading && products.length === 0) {
     return (
-      <View style={styles.center}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <Text style={{ color: '#64748b', fontWeight: '600' }}>No products found in this category.</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={{ flex: 1, backgroundColor: '#fff' }}>
       {/* Header Block */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backWrapper}>
-          <Text style={styles.backBtn}>← Back</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ paddingRight: 10 }}>
+          <Text style={{ fontSize: 16, color: '#2563eb', fontWeight: '600' }}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.title} numberOfLines={1}>{catName || "Category"}</Text>
-        <View style={{ width: 50 }} /> {/* बैलेंसिंग के लिए स्पेस भाई */}
+        <Text style={{ fontSize: 18, fontWeight: '700', color: '#0f172a', flex: 1, marginLeft: 10 }} numberOfLines={1}>
+          {catName || "Category"}
+        </Text>
+        <View style={{ width: 50 }} />
       </View>
 
       {/* Products Grid */}
@@ -60,40 +63,86 @@ export default function CategoryDetailsScreen({ route, navigation }: any) {
         numColumns={2}
         keyExtractor={(item) => String(item.id || item._id)}
         contentContainerStyle={{ padding: 10, paddingBottom: 40 }}
-        columnWrapperStyle={styles.rowBetween}
+        columnWrapperStyle={{ justifyContent: 'space-between' }}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => {
-          // 🎯 फिक्स 1: प्रोडक्ट के वैरिएंट्स में से न्यूनतम बेस प्राइस ढूंढना भाई ताकि रेट ₹0 न दिखे
+      renderItem={({ item }) => {
+          
+          // ==================== 🎯 100% बुलेटप्रूफ यूनिवर्सल डिस्काउंट इंजन भाई साहब ====================
           const variantsList = item.variants || [];
-          const basePrice = variantsList.length > 0 
-            ? Math.min(...variantsList.map((v: any) => Number(v.price || 0)))
-            : Number(item.price || 0);
+          
+          // 1. डेटाबेस की मुख्य वैल्यू को यहाँ वेरिएबल में फेच करें भाई
+          let basePrice = Number(item.price || item.variant?.price || 0);
+          let baseMrp = Number(item.mrp || item.originalPrice || item.variant?.mrp || item.variant?.originalPrice || 0);
 
-          // चेक करो कि क्या इस प्रोडक्ट के एक से ज़्यादा वैरिएंट्स मौजूद हैं भाई
+          // 2. सबसे सस्ता वैरिएन्ट ढूँढकर कीमतें लाइव सिंक करें
+          if (variantsList.length > 0) {
+            const lowestVariant = variantsList.reduce((min: any, v: any) => 
+              Number(v.price || 0) < Number(min.price || 0) ? v : min, 
+              variantsList[0]
+            );
+            basePrice = Number(lowestVariant?.price || basePrice);
+            baseMrp = Number(lowestVariant?.mrp || lowestVariant?.originalPrice || baseMrp);
+          }
+
           const hasMultipleVariants = variantsList.length > 1;
 
+          // 3. कड़क बिज़नेस डिस्काउंट स्ट्रेटेजी (₹100 रूल फॉर्मूला) भाई साहब
+          const savings = baseMrp - basePrice;
+          let calculatedDiscountText = '';
+          
+          if (baseMrp > basePrice && savings > 0) {
+            if (savings < 100) {
+              calculatedDiscountText = `${Math.round((savings / baseMrp) * 100)}% OFF`;
+            } else {
+              calculatedDiscountText = `Flat ₹${Math.round(savings)} OFF`;
+            }
+          }
+          // ========================================================================================= 
+
+          // 🌟 कड़क सुधार: सिर्फ एक ही मुख्य 'return' रहेगा जो सीधा आपका यूआई कंपोनेंट रेंडर करेगा भाई!
           return (
             <TouchableOpacity 
-              style={styles.card}
+              style={{ backgroundColor: '#fff', borderRadius: 12, padding: 10, marginBottom: 12, width: (width - 32) / 2 - 5, borderWidth: 1, borderColor: '#e2e8f0' }}
               activeOpacity={0.9}
               onPress={() => navigation.navigate('ProductDetails', { productId: item.id || item._id })}
             >
-              <View style={styles.imgContainer}>
-                <Image source={{ uri: item.image }} style={styles.img} />
+              <View style={{ width: '100%', height: 120, borderRadius: 8, overflow: 'hidden', backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center' }}>
+                <Image source={{ uri: item.image }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
               </View>
-              <View style={styles.infoBlock}>
-                <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.sellerName} numberOfLines={1}>
+              <View style={{ marginTop: 8 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: '#1e293b' }} numberOfLines={1}>{item.name}</Text>
+                <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }} numberOfLines={1}>
                   {item.seller?.businessName || "Verified Shop"}
                 </Text>
                 
-                {/* 🎯 फिक्स 2: अगर मल्टीपल वजन/साइज हैं तो 'From ₹XX' चमकाओ भाई */}
-                <Text style={styles.price}>
-                  {hasMultipleVariants ? (
-                    <Text style={styles.fromText}>From </Text>
+                {/* यूआई प्राइस और डिस्काउंट बैज रेंडर ब्लॉक */}
+                <View style={{ marginTop: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                    {hasMultipleVariants && (
+                      <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '600' }}>From </Text>
+                    )}
+                    
+                    {/* असली सेलिंग प्राइस */}
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>
+                      ₹{basePrice}
+                    </Text>
+                    
+                    {/* कटी हुई MRP लाइन */}
+                    {baseMrp > basePrice ? (
+                      <Text style={{ fontSize: 11, color: '#94a3b8', textDecorationLine: 'line-through' }}>
+                        ₹{baseMrp}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {/* डायनामिक कस्टमाइज्ड बिज़नेस ऑफर बॉक्स बैज */}
+                  {calculatedDiscountText ? (
+                    <View style={{ backgroundColor: '#f0fdf4', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#16a34a' }}>{calculatedDiscountText}</Text>
+                    </View>
                   ) : null}
-                  ₹{basePrice}
-                </Text>
+                </View>
+
               </View>
             </TouchableOpacity>
           );
@@ -102,7 +151,6 @@ export default function CategoryDetailsScreen({ route, navigation }: any) {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' },
