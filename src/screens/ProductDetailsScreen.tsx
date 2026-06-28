@@ -8,7 +8,7 @@ import { ShoppingCart, Minus, Plus, ChevronLeft, Star, Share2, ShieldCheck, Cloc
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../lib/queryClient';
 import { useCart } from '../context/CartContext';
-
+import api from "../services/api";
 const { width, height } = Dimensions.get('window');
 
 export default function ProductDetailsScreen() {
@@ -16,6 +16,7 @@ export default function ProductDetailsScreen() {
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
   const { productId } = route.params as { productId: number };
+  const [viewTracked, setViewTracked] = useState(false);
   const { refreshCart } = useCart();
  const [quantity, setQuantity] = useState(1);
   const [activeIndex, setActiveIndex] = React.useState(0);
@@ -36,7 +37,30 @@ export default function ProductDetailsScreen() {
       setSelectedVariant({ id: null, price: product.price, originalPrice: product.originalPrice, quantityValue: '1', unit: 'unit' });
     }
   }, [product]);
+useEffect(() => {
+  if (!product) return;
 
+  if (viewTracked) return;
+
+  const timer = setTimeout(async () => {
+    try {
+      await api.post(
+        `/api/home-products/product/view/${product.id}`
+      );
+
+      console.log("✅ Product View Tracked:", product.id);
+
+      setViewTracked(true);
+
+    } catch (err) {
+      console.log("❌ View Track Error", err);
+    }
+
+  }, 3000); // 3 सेकंड देखने के बाद ही view count होगा
+
+  return () => clearTimeout(timer);
+
+}, [product, viewTracked]);
   // 🎯 फिक्स 2: कार्ट में अब productId के साथ-साथ 'variantId' भी जाएगा भाई!
   const cartMutation = useMutation({
     mutationFn: async () => {
@@ -246,6 +270,18 @@ export default function ProductDetailsScreen() {
             >
               <Text style={styles.buyText}>Buy Now</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+  onPress={async () => {
+    try {
+      await apiRequest("POST", `/api/home-products/product/wishlist/${product.id}`);
+      Alert.alert("Added to Wishlist ❤️");
+    } catch (e) {
+      console.log("wishlist error", e);
+    }
+  }}
+>
+  <Text>Add to Wishlist</Text>
+</TouchableOpacity>
           </View>
         </View>
       </View>

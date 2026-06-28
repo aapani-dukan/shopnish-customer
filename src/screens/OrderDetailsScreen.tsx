@@ -26,6 +26,13 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
     if (['cancelled', 'rejected'].includes(s)) return '#ef4444';
     return '#7c3aed';
   };
+  const deliveryFee = Number(order?.deliveryCharge ?? 0);
+
+const platformFee = Number(order?.platformCharge ?? 0);
+
+const couponDiscount = Number(order?.discount ?? 0);
+
+const festiveDiscount = Number(order?.extraDiscount ?? 0);
 return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -87,7 +94,7 @@ return (
                         (item.quantityValue ? `${item.quantityValue} ${item.unit || ''}`.trim() : null) ||
                         (item.productUnit ? `1 ${item.productUnit}` : null);
                       
-                      return (
+              return (
                         <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                           <View style={{ flex: 1, marginRight: 10 }}>
                             <Text style={{ fontSize: 13, fontWeight: '600', color: '#1e293b' }}>
@@ -164,40 +171,124 @@ return (
         </View>
 
         {/* बिल समरी कार्ड - एकदम क्लीन और सटीक गणित */}
+       {/* ==================== 🎯 100% शुद्ध पारदर्शी डिजिटल बिल समरी चक्रव्यूह ==================== */}
         <View style={styles.billCard}>
           <Text style={styles.billTitle}>Bill Summary</Text>
           
-          {/* शुद्ध माल की कीमत */}
+          {/* १. शुद्ध माल की कीमत (Subtotal) */}
           <View style={styles.billRow}>
-            <Text style={styles.billLabel}>Item Total</Text>
+            <Text style={styles.billLabel}>Item Total (सामान की कीमत)</Text>
             <Text style={styles.billValue}>₹{Number(order?.subtotal || 0).toFixed(1)}</Text>
           </View>
           
-          {/* लाइव डायनामिक डिलीवरी फीस */}
-          {(() => {
-            const deliveryFee = Number(
-              order?.deliveryCharge !== undefined ? order?.deliveryCharge : 
-              order?.delivery_charge !== undefined ? order?.delivery_charge : 
-              0
-            );
-            return (
-              <View style={styles.billRow}>
-                <Text style={styles.billLabel}>Delivery Fee</Text>
-                <Text style={[styles.billValue, deliveryFee === 0 ? { color: '#10b981', fontWeight: '700' } : { color: '#0f172a' }]}>
-                  {deliveryFee === 0 ? 'FREE' : `₹${deliveryFee}`}
-                </Text>
-              </View>
-            );
-          })()}
 
-          {/* अंतिम ग्रैंड टोटल वैल्यू */}
-          <View style={[styles.billRow, { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f1f5f9' }]}>
-            <Text style={styles.totalLabel}>Grand Total</Text>
-            <Text style={styles.totalValue}>₹{Number(order?.total || 0).toFixed(1)}</Text>
-          </View>
-        </View>
-      </ScrollView>
-      
+  {/* Delivery */}
+  <View style={styles.billRow}>
+    <Text style={styles.billLabel}>
+      Delivery Fee (🚚 डिलीवरी चार्ज)
+    </Text>
+
+    <Text
+      style={[
+        styles.billValue,
+        deliveryFee === 0
+          ? { color: '#10b981', fontWeight: '700' }
+          : { color: '#0f172a' },
+      ]}
+    >
+      {deliveryFee === 0 ? 'FREE' : `₹${deliveryFee.toFixed(1)}`}
+    </Text>
+  </View>
+
+  {/* Platform Fee */}
+  {platformFee > 0 && (
+    <View style={styles.billRow}>
+      <Text
+        style={[
+          styles.billLabel,
+          { color: '#4f46e5', fontWeight: '600' },
+        ]}
+      >
+        Platform Handling Fee
+      </Text>
+
+      <Text
+        style={[
+          styles.billValue,
+          { color: '#4f46e5', fontWeight: '700' },
+        ]}
+      >
+        ₹{platformFee.toFixed(1)}
+      </Text>
+    </View>
+  )}
+
+  {/* Coupon Discount */}
+  {couponDiscount > 0 && (
+    <View style={styles.billRow}>
+      <Text
+        style={[
+          styles.billLabel,
+          { color: '#dc2626', fontWeight: '600' },
+        ]}
+      >
+        Coupon Discount
+      </Text>
+
+      <Text
+        style={[
+          styles.billValue,
+          { color: '#dc2626', fontWeight: '700' },
+        ]}
+      >
+        -₹{couponDiscount.toFixed(1)}
+      </Text>
+    </View>
+  )}
+
+  {/* Festive Discount */}
+  {festiveDiscount > 0 && (
+    <View style={styles.billRow}>
+      <Text
+        style={[
+          styles.billLabel,
+          { color: '#16a34a', fontWeight: '600' },
+        ]}
+      >
+        Festive Discount
+      </Text>
+
+      <Text
+        style={[
+          styles.billValue,
+          { color: '#16a34a', fontWeight: '700' },
+        ]}
+      >
+        -₹{festiveDiscount.toFixed(1)}
+      </Text>
+    </View>
+  )}
+
+  <View
+    style={{
+      height: 1,
+      backgroundColor: '#f1f5f9',
+      marginVertical: 10,
+    }}
+  />
+
+  {/* Grand Total */}
+  <View style={[styles.billRow, { marginTop: 4 }]}>
+    <Text style={styles.totalLabel}>
+      Grand Total (कुल देय राशि)
+    </Text>
+
+    <Text style={styles.totalValue}>
+      ₹{Number(order?.total || 0).toFixed(1)}
+    </Text>
+  </View>
+</View>
+     </ScrollView> 
       {/* Sticky Bottom Track Button */}
       <View style={styles.footer}>
         <TouchableOpacity 

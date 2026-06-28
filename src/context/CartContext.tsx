@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback,} from 'react';
 import api from '../services/api'; // Aapka axios instance
 import { useAuth } from '../context/AuthContext'; // User ID check karne ke liye
+import { Alert } from 'react-native';
 
 // 🎯 फिक्स 1: वैरिएंट सपोर्ट के लिए इंटरफ़ेस में 'variantId' और 'variant' ऑब्जेक्ट जोड़ दिया भाई!
 export interface CartItem {
@@ -29,12 +30,13 @@ interface CartContextType {
   cart: CartItem[];
   isLoading: boolean;
   // addToCart में अब प्रोडक्ट ऑब्जेक्ट या आईडी के साथ 'variantId' भी पास होगा भाई
-  addToCart: (product: any, sellerId?: number, variantId?: number) => Promise<void>;
+  addToCart: (product: any, sellerId?: number, variantId?: number, quantity?: number) => Promise<void>;
   removeFromCart: (cartItemId: number) => Promise<void>;
   clearCart: () => void;
   getCartTotal: () => number;
   getCartCount: () => number;
   refreshCart: () => Promise<void>;
+   updateQuantity: (cartItemId: number, quantity: number) => Promise<void>; // 👈 Quantity update ka function bhi add kar diya
 }
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
@@ -67,23 +69,25 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [refreshCart]);
 
   // 🎯 फिक्स 2: पेलोड के अंदर 'variantId' को वॉटरप्रूफ तरीके से इंजेक्ट करना भाई
-  const addToCart = async (product: any, sellerId?: number, variantId?: number) => {
+  const addToCart = async (product: any, sellerId?: number, variantId?: number,quantity?: number) => {
     const pId = typeof product === 'object' ? product.id : product;
     const finalSellerId = sellerId || product?.sellerId;
     
     // अगर डायरेक्ट ऑब्जेक्ट आया है और variantId बाहर से नहीं मिला, तो प्रोडक्ट के अंदर से पहला वैरिएंट ढूंढो भाई
     const finalVariantId = variantId || product?.variantId || product?.variants?.[0]?.id;
     
-    if (!pId || !finalSellerId) {
-      console.error("❌ Missing Data:", { pId, finalSellerId, finalVariantId });
-      return;
-    }
-
+   if (!pId || !finalSellerId) {
+    // 🎯 Error ko Alert mein dikhao taaki UI par pata chale
+    Alert.alert("Cart Error", `Missing Data: Product: ${pId}, Seller: ${finalSellerId}`);
+    console.error("❌ Missing Data:", { pId, finalSellerId, finalVariantId });
+    return;
+  }
+  const finalQuantity = quantity || 1; 
     try {
       const payload = {
         productId: Number(pId),
         variantId: finalVariantId ? Number(finalVariantId) : null, // 👈 बैकएंड सर्विस को यह वेरिएंट आईडी चाहिए भाई!
-        quantity: 1,
+        quantity: finalQuantity,
         sellerId: Number(finalSellerId)
       };
 
@@ -124,10 +128,17 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getCartCount = () => {
     return cart.reduce((total, item) => total + item.quantity, 0);
   };
-
+const updateQuantity = async (cartItemId: number, quantity: number) => {
+  try {
+    await api.put(`/api/cart/${cartItemId}`, { quantity });
+    await refreshCart(); // ✅ Yeh sabse zaruri hai: Update ke baad cart refresh ho jayega aur saare components (Header, Home, Cart) sync ho jayenge.
+  } catch (error) {
+    console.error("❌ Update failed:", error);
+  }
+};
   return (
     <CartContext.Provider value={{ 
-      cart, isLoading, addToCart, removeFromCart, clearCart, getCartTotal, getCartCount, refreshCart 
+      cart, isLoading, addToCart, removeFromCart, clearCart, getCartTotal, getCartCount, refreshCart, updateQuantity
     }}>
       {children}
     </CartContext.Provider>

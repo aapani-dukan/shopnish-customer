@@ -5,7 +5,6 @@ import { apiRequest } from '../lib/queryClient';
 import { useCart } from '../context/CartContext';
 import { Trash2, Plus, Minus, ChevronRight, ShoppingBag, Truck, Info } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
-
 export default function CartScreen() {
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
@@ -210,20 +209,50 @@ export default function CartScreen() {
               </Text>
             </View>
           </View>
+<View style={styles.priceRow}>
+  <Text style={styles.priceLabel}>Platform Handling Fee</Text>
+  <Text style={[styles.priceValue, { color: '#4f46e5', fontWeight: '700' }]}>
+    {(() => {
+      const slab = Number(cartData?.totalAmount || 0) <= 500 ? 5 : 
+                   Number(cartData?.totalAmount || 0) <= 1000 ? 10 : 15;
+      return `₹${slab}`;
+    })()}
+  </Text>
+</View>
           
           <TouchableOpacity 
             activeOpacity={0.9}
             style={styles.checkoutBtn}
-            onPress={() => {
-              if (cartItems && cartItems.length > 0) {
-                // 🌟 कड़क सुधार 2: चेकआउट स्क्रीन को वही फाइनल अमाउंट भेजो जो यहाँ नीचे बटन पर दिख रहा है भाई
-                const subtotalVal = Number(cartData?.totalAmount || 0);
-                const finalTotalToSend = subtotalVal >= 500 ? subtotalVal : (subtotalVal + 25);
+         onPress={() => {
+  if (cartItems && cartItems.length > 0) {
+    // 1. Safe Values nikal lo (adminSettings se)
+    const subtotalVal = Number(cartData?.totalAmount || 0);
+    const freeLimitVal = 500; // Admin settings se bhi le sakte ho agar dynamic chahiye
+    
+    // 2. Calculations
+    const delivery = subtotalVal >= freeLimitVal ? 0 : 25;
+    const slab = subtotalVal <= 500 ? 5 : subtotalVal <= 1000 ? 10 : 15;
+    
+    // 3. Discount safe tarike se
+    const couponDisc = Number(cartData?.discount || 0);
+    const festiveDisc = Number(cartData?.extraDiscount || 0);
+    const remainingForFreeDelivery = Math.max(
+  0,
+  freeLimitVal - subtotalVal
+);
+    // 4. Final Total (Logic एकदम सटीक)
+    const finalTotalToSend = subtotalVal + delivery + slab - couponDisc - festiveDisc;
+    navigation.navigate('Checkout', {
+    passedCartItems: cartItems,
+    subtotal: subtotalVal,
+    deliveryCharge: delivery,
+    platformFee: slab,
+    totalAmount: finalTotalToSend,
+    discount: couponDisc,
+    extraDiscount: festiveDisc,
+    remainingForFreeDelivery
+});
 
-                navigation.navigate('Checkout', { 
-                  passedCartItems: cartItems, 
-                  passedTotalAmount: finalTotalToSend // ✅ अब यहाँ से शुद्ध कैलकुलेटेड टोटल ही आगे ट्रेवल करेगा!
-                });
               } else {
                 Alert.alert("बैग खाली है भाई साहब!", "कृपया चेकआउट करने से पहले कार्ट में कुछ सामान जोड़ें।");
               }
@@ -231,11 +260,12 @@ export default function CartScreen() {
           >
             <View>
               {/* 🌟 कड़क सुधार 3: बटन के ऊपर कुल देय राशि एकदम सटीक (₹274.6) प्लस होकर चमकेगी */}
-              <Text style={styles.checkoutTotal}>
-                ₹{Number(cartData?.totalAmount || 0) >= 500 
-                  ? (cartData?.totalAmount || 0) 
-                  : (Number(cartData?.totalAmount || 0) + 25)}
-              </Text>
+            <Text style={styles.checkoutTotal}>
+  ₹{(Number(cartData?.totalAmount || 0) + 
+     (Number(cartData?.totalAmount || 0) >= 500 ? 0 : 25) + 
+     (Number(cartData?.totalAmount || 0) <= 500 ? 5 : Number(cartData?.totalAmount || 0) <= 1000 ? 10 : 15)
+   ).toFixed(1)}
+</Text>
               <Text style={styles.checkoutSub}>Total Payable</Text>
             </View>
             <View style={styles.btnAction}>

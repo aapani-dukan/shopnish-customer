@@ -41,8 +41,14 @@ export default function CheckoutDirectScreen() {
   const freeLimit = adminSettings?.freeDeliveryMinOrderValue ?? 500;
   const baseCharge = adminSettings?.baseDeliveryCharge ?? 25;
   const deliveryCharge = subtotal >= freeLimit ? 0 : baseCharge;
-  const total = subtotal + deliveryCharge;
 
+ // 3. Dynamic Charges (Sahi formula yahan define karein)
+  const slabCharge = subtotal <= 500 ? 5 : subtotal <= 1000 ? 10 : 15;
+  const couponDisc = Number((directItem as any)?.discount || 0);
+  const festiveDisc = Number((directItem as any)?.extraDiscount || 0);
+  
+  // 🔥 Ab 'total' variable mein hi sahi amount rahega
+  const total = subtotal + deliveryCharge + slabCharge - couponDisc - festiveDisc;
  // 🎯 फिक्स 1: ऑर्डर पेलोड के अंदर 'variantId' को 100% सटीक इंजेक्ट करना भाई!
  // ==================== 🎯 100% सटीक QUICK CHECKOUT ENGINE फिक्स ====================
   const handlePlaceOrder = async () => {
@@ -66,7 +72,10 @@ export default function CheckoutDirectScreen() {
         : dItem.quantityValue 
           ? `${dItem.quantityValue} ${dItem.unit || 'g'}`.trim()
           : (dItem.variantName || dItem.variantTitle || '');
-
+const slabCharge = subtotal <= 500 ? 5 : subtotal <= 1000 ? 10 : 15;
+  const couponDisc = Number((directItem as any)?.discount || 0);
+  const festiveDisc = Number((directItem as any)?.extraDiscount || 0);
+const finalGrandTotal = subtotal + Number(deliveryCharge) + slabCharge - couponDisc - festiveDisc;
       const orderData = {
         newDeliveryAddress: {
           fullName: fullName,
@@ -95,7 +104,11 @@ export default function CheckoutDirectScreen() {
         
         subtotal: Number(subtotal),
         deliveryCharge: Number(deliveryCharge),
-        total: Number(total),
+        platformFee: slabCharge,
+        couponDiscount: couponDisc,
+        festiveDiscount: festiveDisc,
+        slabCharge: Number(slabCharge),
+        total: Number(finalGrandTotal),
         sellerId: dItem.sellerId || dItem.product?.sellerId,
         cartOrder: false,
       };
@@ -177,27 +190,69 @@ export default function CheckoutDirectScreen() {
   )}
 
   {/* Payment & Summary */}
+  {/* ==================== 🎯 100% शुद्ध कूपन + त्योहार डिस्काउंट लोडेड समरी ब्लॉक ==================== */}
   <View style={styles.summaryCard}>
     <Text style={styles.sectionTitle}>Payment Summary</Text>
     
-    {/* ✅ यहाँ से फालतू स्पेस हटाई गई है ताकि 'Text strings' एरर न आए */}
     <View style={styles.priceRow}>
-      <Text style={styles.priceLabel}>Item Total</Text>
+      <Text style={styles.priceLabel}>Item Total (सामान की कीमत)</Text>
       <Text style={styles.priceValue}>₹{subtotal}</Text>
     </View>
 
     <View style={styles.priceRow}>
-      <Text style={styles.priceLabel}>Delivery Fee</Text>
+      <Text style={styles.priceLabel}>Delivery Fee (🚚 डिलीवरी चार्ज)</Text>
       <Text style={[styles.priceValue, { color: '#10b981' }]}>
         {deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}
       </Text>
     </View>
 
+    {/* 🎛️ नया जोड़: स्लैब-वाइज प्लेटफ़ॉर्म चार्ज इंजन */}
+    <View style={styles.priceRow}>
+      <Text style={[styles.priceLabel, { color: '#4f46e5', fontWeight: '600' }]}>+ Platform Handling Fee</Text>
+      <Text style={[styles.priceValue, { color: '#4f46e5', fontWeight: '700' }]}>
+        {(() => {
+          const slabCharge = subtotal <= 500 ? 5 : subtotal <= 1000 ? 10 : 15;
+          return `₹${slabCharge}`;
+        })()}
+      </Text>
+    </View>
+
+    {/* 🎁 नया जोड़: प्रोमो कोड कूपन डिस्काउंट (डेटाबेस का discount कॉलम भाई - अगर 0 से बड़ा हो तो ही दिखेगा) */}
+    {Number((directItem as any)?.discount || 0) > 0 && (
+      <View style={styles.priceRow}>
+        <Text style={[styles.priceLabel, { color: '#dc2626', fontWeight: '600' }]}>- Coupon Discount (कूपन चूट)</Text>
+        <Text style={[styles.priceValue, { color: '#dc2626', fontWeight: '700' }]}>
+          -₹{Number((directItem as any)?.discount || 0)}
+        </Text>
+      </View>
+    )}
+
+    {/* 🎪 नया जोड़: त्योहार स्पेशल चूट (डेटाबेस का extraDiscount कॉलम भाई साहब) */}
+    {Number((directItem as any)?.extraDiscount || 0) > 0 && (
+      <View style={styles.priceRow}>
+        <Text style={[styles.priceLabel, { color: '#16a34a', fontWeight: '600' }]}>- Festive Discount (विशेष त्योहार चूट)</Text>
+        <Text style={[styles.priceValue, { color: '#16a34a', fontWeight: '700' }]}>
+          -₹{Number((directItem as any)?.extraDiscount || 0)}
+        </Text>
+      </View>
+    )}
+
     <View style={styles.divider} />
 
     <View style={styles.priceRow}>
-      <Text style={styles.grandLabel}>Total to Pay</Text>
-      <Text style={styles.grandValue}>₹{total}</Text>
+      <Text style={styles.grandLabel}>Total to Pay (कुल देय राशि)</Text>
+      <Text style={styles.grandValue}>
+        {(() => {
+          // 🔥 आपका असली ऐतिहासिक बिज़नेस फ़ॉर्मूला: 
+          // total = subtotal + delivery + platformHandling - couponDiscount - extraDiscount
+          const slabCharge = subtotal <= 500 ? 5 : subtotal <= 1000 ? 10 : 15;
+          const couponDisc = Number((directItem as any)?.discount || 0);
+          const festiveDisc = Number((directItem as any)?.extraDiscount || 0);
+          
+          const finalGrandTotal = subtotal + deliveryCharge + slabCharge - couponDisc - festiveDisc;
+          return `₹${finalGrandTotal.toFixed(2)}`;
+        })()}
+      </Text>
     </View>
     
     <View style={styles.codBadge}>
@@ -205,7 +260,6 @@ export default function CheckoutDirectScreen() {
       <Text style={styles.codText}>Cash on Delivery Selected</Text>
     </View>
   </View>
-
 </ScrollView>
       {/* Bottom Button */}
       <View style={styles.footer}>
@@ -217,7 +271,7 @@ export default function CheckoutDirectScreen() {
   {loading ? (
     <ActivityIndicator color="#fff" />
   ) : (
-    <Text style={styles.orderBtnText}>Place Order • ₹{total}</Text>
+    <Text style={styles.orderBtnText}>Place Order • ₹{total.toFixed(2)}</Text>
   )}
 </TouchableOpacity>
       </View>

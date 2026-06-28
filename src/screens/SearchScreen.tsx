@@ -11,26 +11,38 @@ const { width } = Dimensions.get('window');
 
 export default function SearchScreen({ route, navigation }: any) {
   // 1. Params से लोकेशन डेटा लें (जो SearchBar से आ रहा है)
-  const { pincode, lat, lng } = route.params || {};
+ const {
+  pincode,
+  lat,
+  lng,
+  showAll = false,
+} = route.params || {};
   const [searchQuery, setSearchQuery] = useState('');
 
   // 2. Real-time Search Logic
-  const { data: products = [], isLoading, isFetching } = useQuery({
-    queryKey: ['search', searchQuery, pincode],
-    queryFn: async () => {
-      if (searchQuery.length < 2) return [];
-      const res = await api.get('/api/products', {
-        params: {
-          search: searchQuery,
-          pincode: pincode, // ✅ बैकएंड को शांत रखने के लिए
-          lat: lat,
-          lng: lng
-        }
-      });
-      return res.data.products || [];
-    },
-    enabled: searchQuery.length >= 2, // 2 अक्षर के बाद ही API कॉल होगी
-  });
+ const { data: products = [], isLoading, isFetching } = useQuery({
+  queryKey: ['search', searchQuery, showAll, pincode],
+
+  queryFn: async () => {
+    const params: any = {
+      pincode,
+      lat,
+      lng,
+    };
+
+    if (!showAll) {
+      params.search = searchQuery;
+    }
+
+    const res = await api.get('/api/products', {
+      params,
+    });
+
+    return res.data.products || [];
+  },
+
+  enabled: showAll || searchQuery.length >= 2,
+});
 
   return (
     <View style={styles.container}>
@@ -50,7 +62,7 @@ export default function SearchScreen({ route, navigation }: any) {
             placeholder="Search products or stores..."
             value={searchQuery}
             onChangeText={setSearchQuery}
-            autoFocus={true} // ✅ स्क्रीन खुलते ही कीबोर्ड हाजिर
+           autoFocus={!showAll}
             placeholderTextColor="#94A3B8"
           />
           {(isLoading || isFetching) && <ActivityIndicator size="small" color="#2563eb" />}
@@ -63,7 +75,7 @@ export default function SearchScreen({ route, navigation }: any) {
       </View>
 
       {/* 2. Results or Suggestions */}
-      {searchQuery.length >= 2 ? (
+    {showAll || searchQuery.length >= 2 ? (
         <FlatList
           data={products}
           keyExtractor={(item) => item.id.toString()}

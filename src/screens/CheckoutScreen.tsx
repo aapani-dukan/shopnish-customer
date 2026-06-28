@@ -14,7 +14,14 @@ export default function CheckoutScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const passedCartItems = route.params?.passedCartItems || [];
-  const passedTotalAmount = route.params?.passedTotalAmount || 0;
+
+const subtotal = Number(route.params?.subtotal || 0);
+const deliveryCharge = Number(route.params?.deliveryCharge || 0);
+const platformFee = Number(route.params?.platformFee || 0);
+const passedTotalAmount = Number(route.params?.totalAmount || 0);
+
+const discount = Number(route.params?.discount || 0);
+const extraDiscount = Number(route.params?.extraDiscount || 0);
   const { cart, getCartTotal, clearCart } = useCart();
   const { user } = useAuth();
   const { currentLocation } = useLocation();
@@ -30,7 +37,9 @@ export default function CheckoutScreen() {
   const [pincode, setPincode] = useState('323001'); // Default as per your direct buy logic
   const [landmark, setLandmark] = useState('');
   const [instructions, setInstructions] = useState('');
-
+const remainingForFreeDelivery = Number(
+  route.params?.remainingForFreeDelivery || 0
+);
 // 1. एडमिन सेटिंग्स मंगवाएं
   const { data: adminSettings } = useQuery({
     queryKey: ['adminSettings'],
@@ -38,20 +47,12 @@ export default function CheckoutScreen() {
   });
 
   // ✅ कड़क सुधार: पहले वेरिएबल्स डिक्लेअर किए ताकि नीचे 'subtotal' एरर न मारे भाई साहब!
-  const freeLimit = adminSettings?.freeDeliveryMinOrderValue ?? 500;
-  const baseCharge = adminSettings?.baseDeliveryCharge ?? 25;
-
-  // 🌟 शुद्ध माल (Maal) का सबटोटल इंजन
-  const subtotal = passedTotalAmount > 0 
-    ? (Number(passedTotalAmount) < freeLimit ? Number(passedTotalAmount) - baseCharge : Number(passedTotalAmount)) 
-    : Number(getCartTotal() || 0);
-
-  const deliveryCharge = subtotal >= freeLimit ? 0 : baseCharge;
-  const total = subtotal + deliveryCharge;
-
-  // ✅ Step-by-Step validation logic
- 
-
+  const total =
+  subtotal +
+  deliveryCharge +
+  platformFee -
+  discount -
+  extraDiscount;
      // ==================== 🎯 TYPESCRIPT ERROR-FREE CART ENGINE FIX ====================
   const handlePlaceOrder = async () => {
     if (!fullName || !phone || !address) {
@@ -98,32 +99,41 @@ export default function CheckoutScreen() {
           productUnit: item.variant?.unit || item.product?.unit || 'g'
         };
       });
+     
 
-      // 🎯 100% शुद्ध सिंक किया हुआ आर्डर डेटा पेलोड भाई साहब
-      const orderData = {
-        customerId: user?.id,
-        newDeliveryAddress: {
-          fullName: fullName,
-          phoneNumber: phone, 
-          addressLine1: address,
-          city: city || "Bundi", 
-          state: "Rajasthan",
-          postalCode: pincode || "323001",
-          latitude: currentLocation?.latitude ? Number(currentLocation.latitude) : 0,
-          longitude: currentLocation?.longitude ? Number(currentLocation.longitude) : 0,
-        },
-        paymentMethod: "cod",
-        deliveryInstructions: instructions || "",
-        
+    const couponDisc = Number((route.params as any)?.discount || 0);
+    const festiveDisc = Number((route.params as any)?.extraDiscount || 0);
+    const finalGrandTotal = total;
         // 🌟 कड़क सुधार 2: बैकएंड को वही असली सबटोटल और टोटल भेजो जो कार्ट स्क्रीन से पास होकर आया है!
-        subtotal: Number(subtotal),
-        deliveryCharge: Number(deliveryCharge),
-        total: Number(total),
-        
-        items: itemsToOrder,
-        orderSource: "app",
-        cartOrder: true, 
-      };
+      const orderData = {
+  customerId: user?.id,
+  newDeliveryAddress: {
+    fullName,
+    phoneNumber: phone,
+    addressLine1: address,
+    city: city || "Bundi",
+    state: "Rajasthan",
+    postalCode: pincode || "323001",
+    latitude: currentLocation?.latitude ? Number(currentLocation.latitude) : 0,
+    longitude: currentLocation?.longitude ? Number(currentLocation.longitude) : 0,
+  },
+
+  paymentMethod: "cod",
+  deliveryInstructions: instructions || "",
+
+  // ✅ CartScreen से आई हुई वही values भेजो
+  subtotal: subtotal,
+  deliveryCharge: deliveryCharge,
+  platformFee: platformFee,
+  total: total,
+
+  couponDiscount: discount,
+  festiveDiscount: extraDiscount,
+
+  items: itemsToOrder,
+  orderSource: "app",
+  cartOrder: true,
+};
 
       const response = await api.post('/api/orders', orderData);
 
@@ -189,7 +199,7 @@ export default function CheckoutScreen() {
           : item.variantName 
             ? ` (${item.variantName})` 
             : '';
-        
+         const freeLimit = 500;
         return (
           <View key={item.id || item.variantId || item.productId} style={styles.itemRow}>
             {/* 🎯 नाम के आगे उसका वजन/साइज और मात्रा एकदम सही प्रिंट होगी भाई */}
@@ -229,69 +239,113 @@ export default function CheckoutScreen() {
   )}
 
   {/* Step 3: Payment Summary (बैनर को इसके अंदर होना चाहिए) */}
-  {currentStep === 3 && (
-    <View>
-    {/* 🌟 कड़क सुधार 2: अब कस्टमर किसी भी स्टेप पर हो, उसे हमेशा ₹250.4 जैसी बिल्कुल सटीक रकम ही लाइव चमकेगी भाई */}
-        {subtotal < freeLimit && (
-          <View style={styles.freeDeliveryBanner}>
-            <Text style={styles.freeDeliveryText}>
-              सिर्फ <Text style={{fontWeight: '900', color: '#2563eb'}}>₹{(freeLimit - subtotal).toFixed(1)}</Text> का सामान और जोड़ें और {'\n'}
-              <Text style={{fontWeight: '900'}}>FREE DELIVERY</Text> पाएँ! 🚚
-            </Text>
-          </View>
-        )}
-      <Text style={styles.sectionTitle}>Payment Summary</Text>
-      <View style={styles.paymentCard}>
-          <Text style={styles.payName}>Cash on Delivery</Text>
-          <CheckCircle2 color="#2563eb" size={24} />
-      </View>
+{/* ==================== 🎯 100% शुद्ध कूपन + त्योहार डिस्काउंट लोडेड कार्ट चेकआउट इंजन ==================== */}
 
-      <View style={styles.summaryCard}>
-        <View style={styles.totalRow}>
-          <Text style={styles.summaryLabel}>Subtotal</Text>
-          {/* 🌟 कड़क सुधार 1: अगर कार्ट से पहले से जुड़ा हुआ अमाउंट आया है, तो यहाँ शुद्ध माल की कीमत दिखाओ भाई साहब */}
-          <Text style={styles.summaryValue}>
-            ₹{passedTotalAmount > 0 && passedTotalAmount < freeLimit 
-              ? (passedTotalAmount - 25).toFixed(1) 
-              : Number(subtotal).toFixed(1)}
-          </Text>
-        </View>
-        
-        <View style={styles.totalRow}>
-          <Text style={styles.summaryLabel}>Delivery Charge</Text>
-          {/* 🌟 कड़क सुधार 2: जब डिलीवरी चार्ज ₹25 होगा, तो रंग काला रहेगा और जब 0 होगा तो कड़क हरा (FREE) दिखेगा */}
-          <Text style={[
-            styles.summaryValue, 
-            (passedTotalAmount >= freeLimit || passedTotalAmount === 0) 
-              ? { color: '#10b981', fontWeight: '700' } 
-              : { color: '#0f172a', fontWeight: 'normal' }
-          ]}>
-            {(passedTotalAmount >= freeLimit || passedTotalAmount === 0) ? 'FREE' : '₹25'}
-          </Text>
-        </View>
-
-        <View style={styles.divider} />
-        
-        <View style={styles.totalRow}>
-          <Text style={styles.grandTotal}>Total</Text>
-          {/* 🌟 कड़क सुधार 3: फाइनल टोटल वही चमकेगा जो कार्ट स्क्रीन के बटन पर दिख रहा था */}
-          <Text style={styles.grandTotal}>
-            ₹{passedTotalAmount > 0 ? Number(passedTotalAmount).toFixed(1) : Number(total).toFixed(1)}
-          </Text>
-        </View>
-      </View>
-
-      <TouchableOpacity style={styles.placeOrderBtn} onPress={handlePlaceOrder} disabled={loading}>
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.btnText}>
-            Confirm Order • ₹{passedTotalAmount > 0 ? Number(passedTotalAmount).toFixed(1) : Number(total).toFixed(1)}
-          </Text>
-        )}
-      </TouchableOpacity>
+{currentStep === 3 && (
+  <View>
+    {/* फ्री डिलीवरी प्रोत्साहन बैनर भाई */}
+    
+  {deliveryCharge > 0 && (
+  <View style={styles.freeDeliveryBanner}>
+    <Text style={styles.freeDeliveryText}>
+      सिर्फ{" "}
+      <Text style={{ fontWeight: "900", color: "#2563eb" }}>
+        ₹{remainingForFreeDelivery.toFixed(1)}
+      </Text>{" "}
+      का सामान और जोड़ें और{"\n"}
+      <Text style={{ fontWeight: "900" }}>
+        FREE DELIVERY
+      </Text>{" "}
+      पाएँ! 🚚
+    </Text>
+  </View>
+)}
+    
+    <Text style={styles.sectionTitle}>Payment Summary</Text>
+    <View style={styles.paymentCard}>
+        <Text style={styles.payName}>Cash on Delivery</Text>
+        <CheckCircle2 color="#2563eb" size={24} />
     </View>
-  )}
+
+    <View style={styles.summaryCard}>
+      {/* 1. सबटोटल (शुद्ध माल का पैसा भाई साहब) */}
+      <View style={styles.totalRow}>
+        <Text style={styles.summaryLabel}>Subtotal (सामान की कीमत)</Text>
+        <Text style={styles.summaryValue}>
+          ₹{Number(subtotal).toFixed(1)}
+        </Text>
+      </View>
+      
+     {/* Delivery Charge */}
+<View style={styles.totalRow}>
+  <Text style={styles.summaryLabel}>
+    Delivery Charge (डिलीवरी चार्ज)
+  </Text>
+
+  <Text
+    style={[
+      styles.summaryValue,
+      deliveryCharge === 0
+        ? { color: '#10b981', fontWeight: '700' }
+        : { color: '#0f172a' },
+    ]}
+  >
+    {deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge.toFixed(1)}`}
+  </Text>
+</View>
+
+      {/* 🎛️ नया जोड़ ३: स्लैब-वाइज प्लेटफ़ॉर्म चार्ज इंजन */}
+      <View style={styles.totalRow}>
+        <Text style={[styles.summaryLabel, { color: '#4f46e5', fontWeight: '600' }]}>+ Platform Handling Fee (प्लेटफ़ॉर्म फीस)</Text>
+        <Text style={[styles.summaryValue, { color: '#4f46e5', fontWeight: '700' }]}>
+         ₹{platformFee.toFixed(1)}
+        </Text>
+      </View>
+
+      {/* 🎁 नया जोड़ ४: कूपन डिस्काउंट (डेटाबेस का discount कॉलम भाई - अगर उपलब्ध हो तो ही स्क्रीन पर चमके) */}
+      {Number((route.params as any)?.discount || 0) > 0 && (
+        <View style={styles.totalRow}>
+          <Text style={[styles.summaryLabel, { color: '#dc2626', fontWeight: '600' }]}>- Coupon Discount (कूपन चूट)</Text>
+          <Text style={[styles.summaryValue, { color: '#dc2626', fontWeight: '700' }]}>
+            -₹{Number((route.params as any)?.discount || 0).toFixed(1)}
+          </Text>
+        </View>
+      )}
+
+      {/* 🎪 नया जोड़ ५: त्योहार स्पेशल चूट (डेटाबेस का extraDiscount कॉलम भाई साहब) */}
+      {Number((route.params as any)?.extraDiscount || 0) > 0 && (
+        <View style={styles.totalRow}>
+          <Text style={[styles.summaryLabel, { color: '#16a34a', fontWeight: '600' }]}>- Festive Discount (विशेष त्योहार चूट)</Text>
+          <Text style={[styles.summaryValue, { color: '#16a34a', fontWeight: '700' }]}>
+            -₹{Number((route.params as any)?.extraDiscount || 0).toFixed(1)}
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.divider} />
+      
+      {/* 🎯 ६. ग्रैंड टोटल (आपका जादुई ऐतिहासिक बिज़नेस फ़ॉर्मूला लाइव सिंक भाई!) */}
+      <View style={styles.totalRow}>
+        <Text style={styles.grandTotal}>Total to Pay (कुल देय राशि)</Text>
+        <Text style={styles.grandTotal}>
+        ₹{total.toFixed(1)}
+        </Text>
+      </View>
+    </View>
+
+    {/* 🔥 ७. आर्डर प्लेसमेंट बटन (लाइव अंतिम सत्य प्राइस सिंक भाई!) */}
+    <TouchableOpacity style={styles.placeOrderBtn} onPress={handlePlaceOrder} disabled={loading}>
+      {loading ? (
+        <ActivityIndicator color="#fff" />
+      ) : (
+        <Text style={styles.btnText}>
+        Confirm Order • ₹{total.toFixed(1)}
+        </Text>
+      )}
+    </TouchableOpacity>
+  </View>
+)}
+{/* ==================================================================================================== */}
 </ScrollView>
     </View>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   FlatList,
@@ -7,10 +7,11 @@ import {
   StyleSheet,
   Linking,
   TouchableOpacity,
+  Text,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from "@tanstack/react-query";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation,useFocusEffect } from "@react-navigation/native";
 import { useCart } from "../../context/CartContext";
 
 // Components
@@ -19,6 +20,7 @@ import SearchBar from "./SearchBar";
 import CategoryScroller from "./CategoryScroller";
 import BannerCarousel from "./BannerCarousel";
 import CategorySection from "./CategorySection";
+import SubCategorySection from "./SubCategorySection";
 import TrendingSection from "./TrendingSection";
 import AddressModal from "./AddressModal";
 import HomeSkeleton from "../../components/skeletons/HomeSkeleton";
@@ -33,13 +35,14 @@ export default function HomeScreen() {
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [isAddressModalVisible, setIsAddressModalVisible] = useState(false);
-
+  useEffect(() => {
+}, [selectedCategoryId]);
   // --- API DATA ---
   const { data: rawCategories = [] } = useQuery<any[]>({
     queryKey: ["/api/categories"],
     queryFn: async () => (await api.get("/api/categories")).data,
   });
-
+//console.log(JSON.stringify(rawCategories, null, 2));
   const categories = useMemo(() => rawCategories.map((c: any) => ({
     id: c.id || c._id,
     name: c.name,
@@ -49,19 +52,29 @@ export default function HomeScreen() {
   })), [rawCategories]);
 
   const { data: productsData, isLoading: productsLoading, refetch: refetchProducts } = useQuery<any>({
-    queryKey: ["/api/products", currentLocation?.pincode],
+    queryKey: ["/api/home-products", currentLocation?.pincode],
     queryFn: async () => {
       const params = {
         lat: currentLocation?.latitude || 25.4419,
         lng: currentLocation?.longitude || 75.6597,
         pincode: currentLocation?.pincode || "",
       };
-      return (await api.get("/api/products", { params })).data;
+      return (await api.get("/api/home-products", { params })).data;
     },
     enabled: !!currentLocation?.pincode,
   });
 
   const products = productsData?.products || [];
+  const recommendedProducts =
+  productsData?.recommendedProducts || [];
+
+const trendingProductsAI =
+  productsData?.trendingProducts || [];
+
+const recentlyViewedProducts =
+  productsData?.recentlyViewedProducts || [];
+  console.log("🔥 HOME API RESPONSE =", productsData);
+console.log("🔥 PRODUCTS LENGTH =", products.length);
 
   const { data: layoutSections = [] } = useQuery<any[]>({
     queryKey: ["/api/layout/public", currentLocation?.pincode],
@@ -69,6 +82,53 @@ export default function HomeScreen() {
     enabled: !!currentLocation?.pincode,
   });
 
+
+const { data: subCategories = [], isLoading: subLoading } = useQuery({
+  queryKey: ["/api/categories/subcategories", selectedCategoryId],
+  queryFn: async () => {
+    console.log(
+      "🔥 FETCHING SUBCATEGORIES FOR =",
+      selectedCategoryId
+    );
+    if (!selectedCategoryId) return [];
+    const res = await api.get(
+      `/api/categories/${selectedCategoryId}/subcategories`
+    );
+   console.log(
+      "🔥 API RESPONSE =",
+      res.data
+    );
+
+    console.log(
+      "🔥 SUBCATEGORY COUNT =",
+      res.data?.subCategories?.length
+    );
+    return res.data.subCategories || [];
+  },
+  enabled: !!selectedCategoryId,
+});
+useFocusEffect(
+  React.useCallback(() => {
+    console.log("HOME FOCUSED");
+
+    setSelectedCategoryId(null);
+
+    return () => {};
+  }, [])
+);
+useEffect(() => {
+  console.log(
+    "🔥 QUERY DATA CHANGED =",
+    subCategories
+  );
+}, [subCategories]);
+useEffect(() => {
+  console.log(
+    "🔥 TYPE CHECK",
+    Array.isArray(subCategories),
+    subCategories
+  );
+}, [subCategories]);
   const handleBannerPress = (bannerItem: any) => {
   if (!bannerItem) return;
 
@@ -128,7 +188,8 @@ else if (categoryId) {
   // HomeScreen.tsx के अंदर
 
 const handleSelectCategory = (id: string | number) => {
-  // 1. सही कैटेगरी ऑब्जेक्ट ढूँढें (नाम के लिए)
+  console.log("🔥 CATEGORY CLICKED =", id);
+ setSelectedCategoryId(Number(id));
   const selectedCat = categories.find(c => String(c.id) === String(id));
 
   // 2. लोकेशन के साथ नेविगेट करें
@@ -155,93 +216,231 @@ const handleSelectCategory = (id: string | number) => {
     });
 
     // 2. STICKY CONTROLS (Search + Categories)
-    list.push({ type: 'STICKY_CONTROLS' });
+list.push({ type: "STICKY_CONTROLS" });
 
-    // 🗺️ प्रोडक्ट्स को नए मल्टी-वैरिएंट आर्किटेक्चर के लिए मैप करो भाई
-  const normalizedProducts = products.map((p: any) => {
-      const variantsList = p.variants || [];
-      
-      // ==================== 🎯 100% बुलेटप्रूफ होम स्क्रीन डबल-की डिस्काउंट इंजन ====================
-      let basePrice = Number(p.price || 0);
-      
-      // 🌟 कड़क सुधार 1: मुख्य प्रोडक्ट लेवल पर mrp और originalPrice दोनों को पकड़ा भाई साहब
-      let baseMrp = Number(p.mrp || p.originalPrice || 0);
+// Selected Category Object निकालो
+const selectedCategory = categories.find(
+  (c: any) => String(c.id) === String(selectedCategoryId)
+);
+console.log(
+  "🔥 BEFORE PUSH",
+  selectedCategory?.name,
+  Array.isArray(subCategories),
+  subCategories?.length,
+  subCategories
+);
+// अब पूरा SubCategory Section जोड़ो
+if (selectedCategoryId && subCategories.length > 0) {
+  console.log("🔥 PUSHING SUBCATEGORY_SECTION");
 
-      if (variantsList.length > 0) {
-        // सबसे पहले वो वैरिएंट ढूँढो जिसकी कीमत सबसे कम (Minimum Price) है भाई साहब
-        const lowestVariant = variantsList.reduce((min: any, v: any) => 
-          Number(v.price || 0) < Number(min.price || 0) ? v : min, 
-          variantsList[0]
-        );
+  list.push({
+    type: "SUBCATEGORY_SECTION",
+    category: selectedCategory || {
+      id: selectedCategoryId,
+      name: "Category",
+    },
+    subCategories,
+  });
+}
+const normalizeProducts = (list: any[]) =>
+  list.map((p: any) => {
+    const variantsList = p.variants || [];
 
-        basePrice = Number(lowestVariant?.price || basePrice);
-        
-        // 🌟 कड़क सुधार 2: वैरिएंट के अंदर भी दोनों चाबियों (mrp / originalPrice) को सुरक्षित रूप से पकड़ा
-        baseMrp = Number(lowestVariant?.mrp || lowestVariant?.originalPrice || baseMrp);
-      }
+    let basePrice = Number(p.price || 0);
+    let baseMrp = Number(p.mrp || p.originalPrice || 0);
 
-      // साइकोलॉजी रूल: ₹100 से कम बचत पर Percentage OFF, ज़्यादा बचत पर FLAT ₹ OFF भाई साहब
-      const savings = baseMrp - basePrice;
-      let calculatedDiscountText = '';
-      if (baseMrp > basePrice && savings > 0) {
-        if (savings < 100) {
-          const percentOff = Math.round((savings / baseMrp) * 100);
-          calculatedDiscountText = `${percentOff}% OFF`;
-        } else {
-          calculatedDiscountText = `Flat ₹${Math.round(savings)} OFF`;
-        }
-      }
+    if (variantsList.length > 0) {
+      const lowestVariant = variantsList.reduce(
+        (min: any, v: any) =>
+          Number(v.price || 0) <
+          Number(min.price || 0)
+            ? v
+            : min,
+        variantsList[0]
+      );
 
-      return {
-        ...p,
-        price: basePrice, // रेंडरिंग के लिए फ्लैट की
-        mrp: baseMrp,     // ✅ कड़क सुधार: कटी हुई लाइन दिखाने के लिए फ्लैट MRP चाबी जोड़ी
-        originalPrice: String(baseMrp), // बैकवर्ड सेफ़्टी के लिए पुरानी की को भी जिंदा रखा भाई
-        discountText: calculatedDiscountText, // ✅ कड़क सुधार: यूआई कार्ड के लिए पहले से ही टेक्स्ट तैयार कर दिया भाई साहब
-        hasMultipleVariants: variantsList.length > 1
-      };
-    });
+      basePrice = Number(lowestVariant.price || basePrice);
 
-    // 3. TRENDING PRODUCTS
-    if (normalizedProducts.length > 0) {
-      list.push({ type: 'TRENDING', products: normalizedProducts });
+      baseMrp = Number(
+        lowestVariant.mrp ||
+        lowestVariant.originalPrice ||
+        baseMrp
+      );
     }
+
+    const savings = baseMrp - basePrice;
+
+    let discountText = "";
+
+    if (baseMrp > basePrice && savings > 0) {
+
+      if (savings < 100) {
+
+        discountText =
+          `${Math.round(
+            savings / baseMrp * 100
+          )}% OFF`;
+
+      } else {
+
+        discountText =
+          `Flat ₹${Math.round(savings)} OFF`;
+
+      }
+
+    }
+
+    return {
+      ...p,
+      price: basePrice,
+      mrp: baseMrp,
+      originalPrice: String(baseMrp),
+      discountText,
+      hasMultipleVariants:
+        variantsList.length > 1,
+    };
+  });
+    // 🗺️ प्रोडक्ट्स को नए मल्टी-वैरिएंट आर्किटेक्चर के लिए मैप करो भाई
+  const normalizedProducts =
+  normalizeProducts(products);
+
+const normalizedRecommended =
+  normalizeProducts(recommendedProducts);
+
+const normalizedTrending =
+  normalizeProducts(trendingProductsAI);
+
+const normalizedRecentlyViewed =
+  normalizeProducts(recentlyViewedProducts);
+// 🎯 यूनीक लोकल दुकानें निकालो  प्रचार के लिए
+    const localShopsList: any[] = [];
+    let shopIndex = 0;
+
+const nextShop = () => {
+   if(localShopsList.length===0) return null;
+
+   const shop =
+      localShopsList[
+         shopIndex % localShopsList.length
+      ];
+
+   shopIndex++;
+
+   return shop;
+};
+
+    const shopsSeen: any = {};
+    normalizedProducts.forEach((p: any) => {
+      if (p.seller && p.seller.id && !shopsSeen[p.seller.id]) {
+        shopsSeen[p.seller.id] = true;
+        localShopsList.push({
+          id: p.seller.id,
+          businessName: p.seller.businessName || "Local Trusted Store",
+          businessAddress: p.seller.businessAddress || "Nearby Main Market, Bundi",
+        });
+      }
+    });
+    
+// 3. TRENDING PRODUCTS ENGINE: सीधा कड़क 21 प्रोडक्ट्स (7 लाइन्स) 
+   
+// =======================================
+// AI RECOMMENDATION SECTIONS
+// =======================================
+
+if (normalizedRecommended.length > 0) {
+  list.push({
+    type: "RECOMMENDED_PRODUCTS",
+    title: "Recommended for You",
+    products: normalizedRecommended.slice(0, 18),
+  });
+  const shop=nextShop();
+
+   if(shop){
+      list.push({
+         type:"LOCAL_SHOP_BANNER",
+         shop
+      });
+   }
+}
+
+if (normalizedTrending.length > 0) {
+  list.push({
+    type: "TRENDING_PRODUCTS_AI",
+    title: "Trending Products",
+    products: normalizedTrending.slice(0, 18),
+  });
+  const shop=nextShop();
+
+   if(shop){
+      list.push({
+         type:"LOCAL_SHOP_BANNER",
+         shop
+      });
+   }
+}
+
+if (normalizedRecentlyViewed.length > 0) {
+  list.push({
+    type: "RECENTLY_VIEWED_PRODUCTS",
+    title: "Recently Viewed",
+    products: normalizedRecentlyViewed.slice(0, 18),
+  });
+  const shop=nextShop();
+
+   if(shop){
+      list.push({
+         type:"LOCAL_SHOP_BANNER",
+         shop
+      });
+   }
+}
+
 
     // 4. FLASH SALE AD (Middle Banner)
     const flashSale = layoutSections.find(s => s.sectionType === 'flash_sale')?.items || [];
     if (flashSale.length > 0) {
       list.push({ type: 'BANNER_AD', data: flashSale });
-    } 
-
-    // 5. CATEGORY-WISE SECTIONS
+    }
+    // 5. CATEGORY-WISE SECTIONS (यहाँ भी प्रोडक्ट्स को सुधारे हुए ढंग से सिंक किया भाई)
     const categorySpecial = layoutSections.find(s => s.sectionType === 'category_special')?.items || [];
     let visibleCategoryCount = 0;
-
-    categories.forEach((cat) => {
-      // कैटेगरी के हिसाब से फ़िल्टर भी सुधरे हुए प्रोडक्ट्स में से करो भाई
+   categories.forEach((cat) => {
       const catProds = normalizedProducts.filter((p: any) => String(p.categoryId) === String(cat.id));
-      
       if (catProds.length > 0) {
         visibleCategoryCount++;
-
         list.push({ 
           type: 'CATEGORY_SECTION', 
           data: cat, 
-          products: catProds.slice(0, 6) 
+          products: catProds.slice(0, 21) // यहाँ भी कैटेगरी वाइज़ ग्रिड को सीधे 21 प्रोडक्ट्स पर सेट किया
         });
+        const shop=nextShop();
+
+if(shop){
+
+   list.push({
+      type:"LOCAL_SHOP_BANNER",
+      shop
+   });
+
+}
 
         if (visibleCategoryCount === 2 && categorySpecial.length > 0) {
-          list.push({ 
-            type: 'BANNER_AD', 
-            data: categorySpecial,
-            extraSpacing: true
-          });
+          list.push({ type: 'BANNER_AD', data: categorySpecial, extraSpacing: true });
         }
       }
     });
-
+console.log(
+  "🔥 FINAL SECTIONS =",
+  list.map(x => x.type)
+);
     return list;
-  }, [categories, products, layoutSections]);
+ }, [
+  categories,
+  products,
+  layoutSections,
+  selectedCategoryId,
+  subCategories
+]);
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -263,6 +462,10 @@ const handleSelectCategory = (id: string | number) => {
           onRefresh={refetchProducts}
           refreshing={productsLoading}
         renderItem={({ item }: { item: any }) => {
+          console.log(
+    "🔥 RENDER ITEM TYPE =",
+    item.type
+  );
   switch (item.type) {
     case 'HEADER_CONTENT':
       return (
@@ -317,11 +520,77 @@ const handleSelectCategory = (id: string | number) => {
           />
         </View>
       );
+      case "SUBCATEGORY_SECTION":
+        console.log(
+  "🔥 SUBCATEGORY_SECTION RENDERED",
+  item.subCategories?.length
+);
+  return (
 
-   case 'TRENDING':
-      // 🎯 फिक्स 2: फ्लैट प्राइज्ड सुधरे हुए प्रोडक्ट्स को ट्रेंडिंग ग्रिड में पास किया भाई
-      return <TrendingSection products={item.products} numColumns={3} />;
-    
+    <SubCategorySection
+      category={item.category}
+      subCategories={item.subCategories}
+      currentLocation={currentLocation}
+    />
+  );
+case "RECOMMENDED_PRODUCTS":
+  return (
+    <TrendingSection
+      title={item.title}
+      products={item.products}
+      numColumns={3}
+      currentLocation={currentLocation}
+    />
+  );
+
+case "TRENDING_PRODUCTS_AI":
+  return (
+    <TrendingSection
+      title={item.title}
+      products={item.products}
+      numColumns={3}
+      currentLocation={currentLocation}
+    />
+  );
+
+case "RECENTLY_VIEWED_PRODUCTS":
+  return (
+    <TrendingSection
+      title={item.title}
+      products={item.products}
+      numColumns={3}
+      currentLocation={currentLocation}
+    />
+  );
+  case 'TRENDING':
+  return (
+    <TrendingSection
+      products={item.products}
+      numColumns={3}
+      currentLocation={currentLocation}
+    /> );
+     // 🏪 नया ब्लॉक: स्थानीय दुकानों का सुंदर प्रचार विज्ञापनी कार्ड (Bundi Specials USP)
+    case 'LOCAL_SHOP_BANNER':
+      return (
+        <TouchableOpacity 
+          style={{
+            marginHorizontal: 16, marginVertical: 10, padding: 14, backgroundColor: '#fff', borderRadius: 16,
+            borderWidth: 1.5, borderColor: '#e0e7ff', shadowColor: '#4f46e5', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 3
+          }}
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate('ShopDetails', { sellerId: item.shop.id, shopName: item.shop.businessName })}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: '#4f46e5', backgroundColor: '#e0e7ff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>✦ LOCAL TRUSTED SHOP</Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#10b981' }}>Nearby Market</Text>
+          </View>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: '#1e1b4b', marginTop: 6 }}>{item.shop.businessName}</Text>
+          <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>📍 {item.shop.businessAddress}</Text>
+          <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#4f46e5' }}>View Store Inventory & Fresh Stock ➔</Text>
+          </View>
+        </TouchableOpacity>
+      );
     case 'CATEGORY_SECTION':
       // 🎯 फिक्स 3: कैटेगरी सेक्शन के अंदर भी नया वैलिडेटेड डेटा मैप होगा भाई
       return (
