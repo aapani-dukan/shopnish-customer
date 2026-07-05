@@ -4,12 +4,8 @@ import { getAuth, getIdToken } from '@react-native-firebase/auth';
 
 const auth = getAuth();
 
-const isDevelopment = __DEV__;
-
-const baseURL = isDevelopment
-  ? "http://66.116.235.235:5001"   // 👉 लैपटॉप या फोन पर टेस्ट करते समय अपने आप पोर्ट 5001 पकड़ेगा (Testing DB)
-  : "https://api.shopnish.com";   // 👉 लाइव प्लेस्टोर वाले असली ग्राहकों के फोन में अपने आप मेन डोमेन पर रहेगा (Main Prod DB)
-
+//const baseURL = "http://66.116.235.235:5001"; // Testing IP (Force)
+ const baseURL = "https://api.shopnish.com"; // Production URL
 const api = axios.create({
   baseURL: baseURL, // 🔥 अब यह डिब्बा पूरी तरह डायनेमिक हो गया भाई साहब!
   timeout: 15000, 

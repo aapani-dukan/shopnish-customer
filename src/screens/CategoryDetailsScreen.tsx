@@ -46,6 +46,7 @@ const allCategoryShops =
     pincode,
     lat,
     lng,
+    selectedSubCatId
   ],
 
   initialPageParam: 1,
@@ -54,6 +55,7 @@ const allCategoryShops =
     const res = await api.get("/api/products/category-products", {
       params: {
         categoryId: catId,
+        subCategoryId: selectedSubCatId === "All" ? null : selectedSubCatId,
         pincode: pincode || "",
         lat: lat || 0,
         lng: lng || 0,
@@ -87,7 +89,7 @@ const products = useMemo(() => {
         shopsMap[p.seller.id] = {
           id: p.seller.id,
           businessName: p.seller.businessName || "Local Verified Shop",
-          businessAddress: p.seller.businessAddress || "Nearby Local Market, Bundi",
+          businessAddress: p.seller.businessAddress || "Nearby Local Market",
           distance: lat && lng ? "0.5 KM away" : "Nearby"
         };
       }
@@ -157,52 +159,67 @@ const uniqueSubCategories = useMemo(() => {
 }, [subCategories]);
   // 5. मखमली सब-कैटेगरी वाइज़ स्ट्रक्चर बिल्डिंग (अधिकतम 21 आइटम्स + दुकान इंसर्शन लॉजिक)
   const pageSections = useMemo(() => {
-    const list: any[] = [];
-    
-    // अगर कोई विशिष्ट सब-कैटेगरी चुनी हुई है तो सिर्फ वही सेक्शन दिखाओ
-    const targetSubCats = selectedSubCatId === 'All' 
-      ? subCategories 
-      : subCategories.filter((s: any) => String(s.id) === String(selectedSubCatId));
+  const list: any[] = [];
+  let shopCounter = 0; // ✅ डिक्लेयर करना ज़रूरी है!
 
-    let shopCounter = 0;
+  // 1. फिल्टर लॉजिक: अगर 'All' है तो सब, नहीं तो सिर्फ चुनी हुई सब-कैटेगरी
+  const targetSubCats = (selectedSubCatId === null || selectedSubCatId === 'All')
+    ? subCategories 
+    : subCategories.filter((s: any) => String(s.id) === String(selectedSubCatId));
 
-    targetSubCats.forEach((sub: any) => {
-      // प्रोडक्ट की सब-कैटेगरी आईडी मैच करें भाई साहब
-      const subProds = processedProducts.filter((p: any) => String(p.subCategoryId) === String(sub.id));
+  // 2. लूप चलाएं
+  targetSubCats.forEach((sub: any) => {
+    const subProds = processedProducts.filter((p: any) => 
+      String(p.subCategoryId) === String(sub.id)
+    );
       
-      if (subProds.length > 0) {
-        list.push({
-          type: 'SUBCAT_SECTION',
-          id: sub.id,
-          title: sub.name,
-          titleHindi: sub.nameHindi || '',
-          products : subProds,
-          hasMore: false
-        });
-
-        // हर 2 सब-कैटेगरी के बाद एक सुंदर लोकल दुकान का प्रचार बॉक्स ठोक दो भाई साहब!
-        if (uniqueShops.length > 0) {
-          const currentShop = uniqueShops[shopCounter % uniqueShops.length];
-          list.push({ type: 'SHOP_AD', shop: currentShop });
-          shopCounter++;
-        }
-      }
-    });
-
-    // अगर कोई सब-कैटेगरी असाइन नहीं है या डेटा पुराना है तो फॉलबैक
-    if (list.length === 0 && processedProducts.length > 0) {
+    if (subProds.length > 0) {
       list.push({
         type: 'SUBCAT_SECTION',
-        id: 'general',
-        title: 'All Products',
-        titleHindi: 'सभी उत्पाद',
-        products: processedProducts,
+        id: sub.id,
+        title: sub.name,
+        titleHindi: sub.nameHindi || '',
+        products: subProds,
         hasMore: false
       });
-    }
 
-    return list;
-  }, [subCategories, processedProducts, selectedSubCatId, uniqueShops]);
+      // 3. दुकान का विज्ञापन (shopCounter का यूज़)
+      if (uniqueShops.length > 0) {
+        const currentShop = uniqueShops[shopCounter % uniqueShops.length];
+        list.push({ type: 'SHOP_AD', shop: currentShop });
+        shopCounter++; // ✅ हर बार काउंटर बढ़ाएं
+      }
+    }
+  });
+
+  // 4. फॉलबैक (अगर लिस्ट खाली है)
+  if (
+  (selectedSubCatId === null || selectedSubCatId === "All") &&
+  list.length === 0 &&
+  processedProducts.length > 0
+) {
+    list.push({
+      type: 'SUBCAT_SECTION',
+      id: 'general',
+      title: 'All Products',
+      titleHindi: 'सभी उत्पाद',
+      products: processedProducts,
+      hasMore: false
+    });
+  }
+
+if (
+  selectedSubCatId !== null &&
+  selectedSubCatId !== "All" &&
+  list.length === 0
+) {
+  list.push({
+    type: "EMPTY_SUBCATEGORY",
+    id: "empty",
+  });
+}
+  return list;
+}, [subCategories, processedProducts, selectedSubCatId, uniqueShops]); // ✅ अब यह correctly डिपेंडेंट है
 
   if (isLoading) {
     return (
@@ -290,11 +307,14 @@ if (showAllShops) {
             keyExtractor={(item) => `side-${item.id}`}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => {
-              const isSelected = String(item.id) === String(selectedSubCatId);
+             const isSelected = item.id === 'All' 
+  ? selectedSubCatId === null 
+  : String(item.id) === String(selectedSubCatId);
               return (
                 <TouchableOpacity 
-                  onPress={() => setSelectedSubCatId(item.id)}
-                  style={[styles.sideTab, isSelected && styles.sideTabActive]}
+                // 1. onPress में बदलाव
+onPress={() => setSelectedSubCatId(item.id === 'All' ? null : item.id)}
+
                 >
                   <Text style={[styles.sideTextEng, isSelected && styles.sideTextActive]}>{item.name}</Text>
                   {item.nameHindi ? (
@@ -333,6 +353,27 @@ onEndReachedThreshold={0.5}
   </>
 }
             renderItem={({ item }) => {
+              if (item.type === "EMPTY_SUBCATEGORY") {
+    return (
+      <View
+        style={{
+          paddingVertical: 60,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 16,
+            color: "#64748b",
+            fontWeight: "600",
+          }}
+        >
+          इस Sub Category में अभी कोई Product उपलब्ध नहीं है।
+        </Text>
+      </View>
+    );
+  }
               
               // A. सब-कैटेगरी उत्पाद सेक्शन (3-3 ग्रिड)
               if (item.type === 'SUBCAT_SECTION') {
