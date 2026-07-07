@@ -10,6 +10,7 @@ interface Product {
   id: string | number;
   _id?: string | number;
   name: string;
+  name_hindi?: string;
   price: number; 
   mrp?: number;
   discountText?: string;
@@ -125,7 +126,9 @@ const handleUpdateQuantity = async (item: any, delta: number) => {
 
               {/* Content Area */}
               <View style={styles.info}>
-                <Text style={styles.name} numberOfLines={2}>{item.name}</Text>
+                <Text style={styles.name} numberOfLines={2}>
+                  {item.name_hindi ? item.name_hindi : item.name}
+                </Text>
                 <Text style={styles.seller} numberOfLines={1}>
                   {item.seller?.businessName || 'Verified Shop'}
                 </Text>

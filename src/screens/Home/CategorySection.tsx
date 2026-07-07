@@ -14,6 +14,7 @@ interface Product {
   id: string | number;
   _id?: string | number;
   name: string;
+  name_hindi?: string;
   price: number; 
   mrp?: number;
   discountText?: string;
@@ -139,8 +140,12 @@ const quantityInCart = cartItems?.find((c: any) =>
                   <Image source={{ uri: item.image }} style={styles.prodImage} />
                 </View>
 <View style={styles.infoArea}>
-                  <Text style={styles.prodName} numberOfLines={2}>{item.name}</Text>
-                  <Text style={styles.sellerName} numberOfLines={1}>{item.seller?.businessName || "Verified Shop"}</Text>
+                  <Text style={styles.prodName} numberOfLines={2}>
+                    {item.name_hindi ? item.name_hindi : item.name}
+                  </Text>
+                  <Text style={styles.sellerName} numberOfLines={1}>
+                    {item.seller?.businessName || "Verified Shop"}
+                  </Text>
 
                   {/* PRICE & BUTTON SECTION */}
                   <View style={{ flex: 1, position: 'relative', minHeight: 60, marginTop: 6 }}>
