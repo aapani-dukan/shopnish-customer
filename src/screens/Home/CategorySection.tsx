@@ -14,7 +14,7 @@ interface Product {
   id: string | number;
   _id?: string | number;
   name: string;
-  name_hindi?: string;
+  nameHindi?: string;
   price: number; 
   mrp?: number;
   discountText?: string;
@@ -140,9 +140,18 @@ const quantityInCart = cartItems?.find((c: any) =>
                   <Image source={{ uri: item.image }} style={styles.prodImage} />
                 </View>
 <View style={styles.infoArea}>
-                  <Text style={styles.prodName} numberOfLines={2}>
-                    {item.name_hindi ? item.name_hindi : item.name}
-                  </Text>
+   {/* इंग्लिश नाम के लिए */}
+  <Text style={styles.englishName}>
+    {item.name}
+  </Text>
+  {/* हिंदी नाम के लिए */}
+  {item.nameHindi && (
+    <Text style={styles.hindiName} numberOfLines={1}>
+      {(item.nameHindi)}
+    </Text>
+  )}
+
+
                   <Text style={styles.sellerName} numberOfLines={1}>
                     {item.seller?.businessName || "Verified Shop"}
                   </Text>
@@ -270,7 +279,17 @@ const styles = StyleSheet.create({
     flex: 1, // 👈 ये कंटेंट को दबाकर रखेगा
     justifyContent: 'space-between' 
   },
-  prodName: { fontSize: 12, fontWeight: '700', color: '#1e293b', lineHeight: 16, height: 32, marginBottom: 4 },
+   hindiName: {
+    fontSize: 11,
+  
+    color: 'rgb(252, 14, 14)', // हिंदी नाम गहरा काला (या अपना मनपसंद कलर)
+    marginBottom: 2,
+  },
+  englishName: {
+    fontSize: 13,
+     fontWeight: 'bold',
+    color: '#010508', // इंग्लिश नाम हल्का ग्रे (ताकि हिंदी मुख्य दिखे)
+  },
   sellerName: { fontSize: 10, color: '#94a3b8', marginTop: 1, fontWeight: '500' },
   
   comingSoonText: { paddingHorizontal: 16, color: '#94a3b8', fontStyle: 'italic', fontSize: 13 },

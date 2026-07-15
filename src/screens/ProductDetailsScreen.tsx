@@ -154,6 +154,9 @@ useEffect(() => {
           </View>
 
           <Text style={styles.name}>{product.name}</Text>
+          <Text style={styles.nameHindi} numberOfLines={1}>
+            {(product.nameHindi)}
+          </Text>
           <TouchableOpacity onPress={() => navigation.navigate('ShopDetails', { sellerId: product.seller?.id, shopName: product.seller?.businessName })}>
              <Text style={styles.brand}>Visit {product.seller?.businessName || "Store"} ›</Text>
           </TouchableOpacity>
@@ -271,6 +274,7 @@ useEffect(() => {
               <Text style={styles.buyText}>Buy Now</Text>
             </TouchableOpacity>
             <TouchableOpacity
+            style={[styles.addBtn, { backgroundColor: '#f3f3ee', borderColor: '#bdb6da' }]}
   onPress={async () => {
     try {
       await apiRequest("POST", `/api/home-products/product/wishlist/${product.id}`);
@@ -280,7 +284,8 @@ useEffect(() => {
     }
   }}
 >
-  <Text>Add to Wishlist</Text>
+  
+  <Text style={styles.addText}>Add to Wishlist</Text>
 </TouchableOpacity>
           </View>
         </View>
@@ -312,7 +317,7 @@ const styles = StyleSheet.create({
   
   contentCard: { 
     marginTop: -30, backgroundColor: '#fff', borderTopLeftRadius: 36, borderTopRightRadius: 36,
-    padding: 24, flex: 1
+    padding: 24, flex: 1, paddingBottom: 100
   },
   handle: { width: 40, height: 4, backgroundColor: '#e2e8f0', borderRadius: 10, alignSelf: 'center', marginBottom: 24 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
@@ -323,6 +328,7 @@ const styles = StyleSheet.create({
   reviewCount: { marginLeft: 4, fontSize: 12, color: '#94a3b8' },
   
   name: { fontSize: 24, fontWeight: '900', color: '#0f172a', lineHeight: 32 },
+  nameHindi: { fontSize: 14, fontWeight: '700', color: '#fd0101', marginTop: 2 },
   brand: { fontSize: 14, color: '#2563eb', marginTop: 4, fontWeight: '700' },
 
   priceContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24 },
@@ -347,17 +353,18 @@ const styles = StyleSheet.create({
   // --- FOOTER STYLES ---
   footerContainer: { position: 'absolute', bottom: 0, width: '100%', paddingBottom: Platform.OS === 'ios' ? 34 : 20, paddingHorizontal: 20, backgroundColor: 'transparent' },
   footer: { 
-    flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderRadius: 24,
+    flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#fff', borderRadius: 24,
     shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 15,
     borderWidth: 1, borderColor: '#f1f5f9'
   },
-  footerPrice: { flex: 1 },
-  footerLabel: { fontSize: 10, color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-  totalPriceText: { fontSize: 22, fontWeight: '900', color: '#0f172a' },
-  buttonGroup: { flexDirection: 'row', gap: 10 },
-  addBtn: { width: 54, height: 54, borderRadius: 16, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: '#dbeafe' },
-  buyBtn: { paddingHorizontal: 28, height: 54, borderRadius: 16, backgroundColor: '#2563eb', justifyContent: 'center', alignItems: 'center' },
-  buyText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  footerPrice: { marginRight: 15 },
+  footerLabel: { fontSize: 8, color: '#94a3b8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  totalPriceText: { fontSize: 15, fontWeight: '900', color: '#0f172a' },
+  buttonGroup: { flexDirection: 'row', gap: 10 ,paddingRight: 15},
+  addBtn: { width: 54, height: 45, borderRadius: 16, backgroundColor: '#f5f5f0', justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
+  addText: { color: '#5c2fc5', fontSize: 12, fontWeight: '800' },
+  buyBtn: { paddingHorizontal: 15, height: 45, borderRadius: 16, backgroundColor: '#08235f', justifyContent: 'center', alignItems: 'center' },
+  buyText: { color: '#e9ecef', fontSize: 16, fontWeight: '800' },
   imageWrapper: { 
     width: width, 
     height: height * 0.45, 

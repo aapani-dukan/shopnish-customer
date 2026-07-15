@@ -10,7 +10,7 @@ interface Product {
   id: string | number;
   _id?: string | number;
   name: string;
-  name_hindi?: string;
+  nameHindi?: string;
   price: number; 
   mrp?: number;
   discountText?: string;
@@ -126,9 +126,15 @@ const handleUpdateQuantity = async (item: any, delta: number) => {
 
               {/* Content Area */}
               <View style={styles.info}>
-                <Text style={styles.name} numberOfLines={2}>
-                  {item.name_hindi ? item.name_hindi : item.name}
-                </Text>
+                 {/* इंग्लिश नाम के लिए */}
+  <Text style={styles.englishName}>
+    {item.name}
+  </Text>
+                {item.nameHindi && (
+    <Text style={styles.hindiName} numberOfLines={1}>
+      {item.nameHindi}
+    </Text>
+  )}
                 <Text style={styles.seller} numberOfLines={1}>
                   {item.seller?.businessName || 'Verified Shop'}
                 </Text>
@@ -259,7 +265,17 @@ card: {
     borderRadius: 6,
   },
   badgeText: { fontSize: 8, fontWeight: '900', color: '#0f172a' },
-  
-  name: { fontSize: 12, fontWeight: '700', color: '#1e293b', lineHeight: 16, height: 32, marginBottom: 2 },
+   hindiName: {
+    fontSize: 11,
+    
+    color: '#fd0101', // हिंदी नाम गहरा काला (या अपना मनपसंद कलर)
+    marginBottom: 2,
+  },
+  englishName: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#010408', // इंग्लिश नाम हल्का ग्रे (ताकि हिंदी मुख्य दिखे)
+  },
+ 
   seller: { fontSize: 10, color: '#94a3b8', marginTop: 1, fontWeight: '500' },
 });
