@@ -4,8 +4,8 @@ import { getAuth, getIdToken } from '@react-native-firebase/auth';
 
 const auth = getAuth();
 
-//const baseURL = "http://66.116.235.235:5001"; // Testing IP (Force)
- const baseURL = "https://api.shopnish.com"; // Production URL
+const baseURL = "http://66.116.235.235:5001"; // Testing IP (Force)
+ //const baseURL = "https://api.shopnish.com"; // Production URL
 const api = axios.create({
   baseURL: baseURL, // 🔥 अब यह डिब्बा पूरी तरह डायनेमिक हो गया भाई साहब!
   timeout: 15000, 

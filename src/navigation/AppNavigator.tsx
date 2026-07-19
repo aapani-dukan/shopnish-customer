@@ -24,7 +24,7 @@ import OrderDetailsScreen from '../screens/OrderDetailsScreen';
 import MapPickerScreen from '../screens/MapPickerScreen';
 import CategoryDetailsScreen from '../screens/CategoryDetailsScreen';
 import ShopDetailsScreen from '../screens/Home/ShopDetailsScreen';
-
+import ReturnProductScreen from '../screens/ReturnProductScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -89,7 +89,10 @@ export default function AppNavigator() {
             {/* Addresses */}
             <Stack.Screen name="Addresses" component={AddressesScreen} options={{ headerShown: true, title: 'Manage Addresses' }} />
             <Stack.Screen name="MapPicker" component={MapPickerScreen} options={{ headerShown: true, title: 'Pick Location' }} />
-
+               <Stack.Screen
+  name="ReturnProduct"
+  component={ReturnProductScreen}
+/>
             {/* Category / Shop Screens */}
             <Stack.Screen name="CategoryDetails" component={CategoryDetailsScreen} options={{ headerShown: true, title: 'Category' }} />
             <Stack.Screen name="ShopDetails" component={ShopDetailsScreen} options={{ headerShown: true, title: 'Shop Details' }} />

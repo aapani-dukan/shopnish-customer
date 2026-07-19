@@ -93,7 +93,8 @@ return (
                       const itemSize = item.variantName || 
                         (item.quantityValue ? `${item.quantityValue} ${item.unit || ''}`.trim() : null) ||
                         (item.productUnit ? `1 ${item.productUnit}` : null);
-                      
+                     const canReturn =
+                    item.status === "delivered"; 
               return (
                         <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                           <View style={{ flex: 1, marginRight: 10 }}>
@@ -106,6 +107,55 @@ return (
                               </Text>
                             )}
                           </View>
+                          {canReturn && (
+  <TouchableOpacity
+    style={{
+      marginTop: 8,
+      alignSelf: "flex-start",
+      backgroundColor: "#ef4444",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 6,
+    }}
+    onPress={() =>
+      navigation.navigate("ReturnProduct", {
+        orderItem: item,
+      })
+    }
+  >
+    <Text
+      style={{
+        color: "#fff",
+        fontWeight: "700",
+      }}
+    >
+      Return
+    </Text>
+  </TouchableOpacity>
+)}
+{item.status === "return_requested" && (
+  <Text style={{ color: "#f59e0b", marginTop: 6 }}>
+    Return Requested
+  </Text>
+)}
+
+{item.status === "return_accepted" && (
+  <Text style={{ color: "#2563eb", marginTop: 6 }}>
+    Please submit product at shop
+  </Text>
+)}
+
+{item.status === "picked_up" && (
+  <Text style={{ color: "#7c3aed", marginTop: 6 }}>
+    Picked Up • Refund Pending
+  </Text>
+)}
+
+{item.status === "returned" && (
+  <Text style={{ color: "#10b981", marginTop: 6 }}>
+    Returned ✔
+  </Text>
+)}
                           <Text style={{ fontSize: 13, fontWeight: '700', color: '#1e293b' }}>₹{item.itemTotal || item.totalPrice}</Text>
                         </View>
                       );

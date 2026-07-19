@@ -24,9 +24,13 @@ export default function ProductDetailsScreen() {
   // 🎯 फिक्स 1: सिलेक्टेड वैरिएंट को मैनेज करने के लिए नई स्टेट भाई
   const [selectedVariant, setSelectedVariant] = useState<any>(null);
 
-  const { data: product, isLoading, isError } = useQuery<any>({
-    queryKey: [`/api/products/${productId}`],
-  });
+  const { data, isLoading, isError } = useQuery<any>({
+  queryKey: [`/api/products/${productId}`],
+});
+
+const product = data;
+
+const similarProducts = data?.similarProducts || [];
 
   // जैसे ही प्रोडक्ट डेटा लोड हो, डिफ़ॉल्ट रूप से पहला वैरिएंट सेलेक्ट कर लो भाई
   useEffect(() => {
@@ -237,6 +241,106 @@ useEffect(() => {
             {product.description || "This curated product is chosen for its quality and durability. Experience the best in class service from ShopNish."}
           </Text>
         </View>
+        {similarProducts.length > 0 && (
+
+<View style={{ marginTop: 25 }}>
+
+<Text style={styles.sectionTitle}>
+
+You may also like
+
+</Text>
+
+<FlatList
+
+horizontal
+
+data={similarProducts}
+
+showsHorizontalScrollIndicator={false}
+
+keyExtractor={(item) => item.id.toString()}
+
+contentContainerStyle={{
+paddingHorizontal:16
+}}
+
+renderItem={({ item }) => (
+
+<TouchableOpacity
+
+style={{
+width:170,
+marginRight:14
+}}
+
+onPress={() =>
+
+navigation.push(
+
+'ProductDetails',
+
+{
+
+productId:item.id
+
+}
+
+)
+
+}
+
+>
+
+<Image
+
+source={{ uri: item.image }}
+
+style={{
+width:170,
+height:170,
+borderRadius:12,
+backgroundColor:'#fff'
+}}
+
+/>
+
+<Text
+
+numberOfLines={2}
+
+style={{
+fontWeight:'700',
+marginTop:8
+}}
+
+>
+
+{item.name}
+
+</Text>
+
+<Text
+style={{
+color:'#2563EB',
+fontWeight:'700',
+marginTop:4
+}}
+>
+
+₹{item.price}
+
+</Text>
+
+</TouchableOpacity>
+
+)}
+
+/>
+
+</View>
+
+)}
       </ScrollView>
 
      {/* 🎯 फिक्स 5: लाइव वैरिएंट प्राइजिंग के हिसाब से डायनामिक अमाउंट कैलकुलेटर फुटर भाई */}
@@ -347,7 +451,7 @@ const styles = StyleSheet.create({
   featureItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8fafc', padding: 12, borderRadius: 16 },
   featureText: { fontSize: 12, fontWeight: '700', color: '#475569' },
   
-  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#0f172a', marginBottom: 12 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#0f172a',marginHorizontal: 16, marginBottom: 12 },
   description: { fontSize: 15, color: '#64748b', lineHeight: 24 },
 
   // --- FOOTER STYLES ---

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState,useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TextInput, ScrollView, 
   TouchableOpacity, Image, Dimensions, ActivityIndicator, FlatList 
@@ -6,7 +6,6 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query'; // Query के लिए
 import api from '../services/api'; // अपना API इंस्टेंस चेक करें
-
 const { width } = Dimensions.get('window');
 
 export default function SearchScreen({ route, navigation }: any) {
@@ -18,10 +17,22 @@ export default function SearchScreen({ route, navigation }: any) {
   showAll = false,
 } = route.params || {};
   const [searchQuery, setSearchQuery] = useState('');
+const [debouncedSearch, setDebouncedSearch] = useState('');
 
+useEffect(() => {
+
+  const timer = setTimeout(() => {
+
+    setDebouncedSearch(searchQuery);
+
+  }, 350);
+
+  return () => clearTimeout(timer);
+
+}, [searchQuery]);
   // 2. Real-time Search Logic
  const { data: products = [], isLoading, isFetching } = useQuery({
-  queryKey: ['search', searchQuery, showAll, pincode],
+  queryKey: ['search', debouncedSearch, showAll, pincode],
 
   queryFn: async () => {
     const params: any = {
@@ -31,7 +42,7 @@ export default function SearchScreen({ route, navigation }: any) {
     };
 
     if (!showAll) {
-      params.search = searchQuery;
+      params.search = debouncedSearch;
     }
 
     const res = await api.get('/api/products', {
@@ -41,7 +52,7 @@ export default function SearchScreen({ route, navigation }: any) {
     return res.data.products || [];
   },
 
-  enabled: showAll || searchQuery.length >= 2,
+  enabled: showAll || debouncedSearch.length >= 2,
 });
 
   return (
@@ -65,8 +76,12 @@ export default function SearchScreen({ route, navigation }: any) {
            autoFocus={!showAll}
             placeholderTextColor="#94A3B8"
           />
-          {(isLoading || isFetching) && <ActivityIndicator size="small" color="#2563eb" />}
-          {searchQuery.length > 0 && !isLoading && (
+        {debouncedSearch !== searchQuery ? (
+    <ActivityIndicator size="small" color="#2563eb" />
+) : (isLoading || isFetching) ? (
+    <ActivityIndicator size="small" color="#2563eb" />
+) : null}
+          {debouncedSearch.length > 0 && !isLoading && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
               <Feather name="x-circle" size={18} color="#94A3B8" />
             </TouchableOpacity>
@@ -75,7 +90,7 @@ export default function SearchScreen({ route, navigation }: any) {
       </View>
 
       {/* 2. Results or Suggestions */}
-    {showAll || searchQuery.length >= 2 ? (
+    {showAll || debouncedSearch.length >= 2 ? (
         <FlatList
           data={products}
           keyExtractor={(item) => item.id.toString()}
@@ -111,7 +126,9 @@ export default function SearchScreen({ route, navigation }: any) {
               </TouchableOpacity>
             );
           }}
-          ListEmptyComponent={!isLoading ? (
+         ListEmptyComponent={
+!isLoading &&
+debouncedSearch.length >= 2 ? (
             <Text style={styles.noResultText}>आपके एरिया में कोई मैच नहीं मिला।</Text>
           ) : null}
         />
